@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Microbit Delivery App</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="project-info">
+      <p class="eyebrow">ENGINEERING PROJECT</p>
+      <h1>Microbit Delivery App</h1>
+      <p>
+        Swipe up to unlock the iPhone, tap the green delivery icon, browse food,
+        search the menu, and add items to the cart.
+      </p>
+      <div class="legend">
+        <span><i class="dot green"></i> Food items are allowed</span>
+        <span><i class="dot red"></i> Restricted products are rejected</span>
+      </div>
+    </section>
+
+    <section class="phone" aria-label="Interactive iPhone preview">
+      <div class="phone-speaker"></div>
+      <div class="dynamic-island" id="dynamicIsland">
+        <span class="island-dot"></span>
+        <span class="island-text" id="islandText">Microbit Delivery</span>
+      </div>
+
+      <div class="screen" id="screen">
+        <!-- LOCK SCREEN -->
+        <section class="screen-view lock-screen active" id="lockScreen">
+          <div class="status-row light-status">
+            <span id="lockTimeSmall">9:41</span>
+            <span>▮▮▮ ᯤ 100%</span>
+          </div>
+
+          <div class="lock-content">
+            <div class="lock-icon">🔒</div>
+            <div class="lock-date" id="lockDate">Thursday, July 23</div>
+            <div class="lock-time" id="lockTime">9:41</div>
+          </div>
+
+          <div class="notification-card">
+            <div class="notification-icon">🛵</div>
+            <div>
+              <strong>Microbit Delivery</strong>
+              <p>Your robot delivery system is ready.</p>
+            </div>
+            <span>now</span>
+          </div>
+
+          <div class="lock-bottom">
+            <button class="round-button" aria-label="Flashlight">🔦</button>
+            <div class="swipe-zone" id="swipeZone">
+              <div class="swipe-arrow">⌃</div>
+              <div class="swipe-text">Swipe up to unlock</div>
+            </div>
+            <button class="round-button" aria-label="Camera">📷</button>
+          </div>
+        </section>
+
+        <!-- HOME SCREEN -->
+        <section class="screen-view home-screen" id="homeScreen">
+          <div class="status-row dark-status">
+            <span>9:41</span>
+            <span>▮▮▮ ᯤ 100%</span>
+          </div>
+
+          <div class="home-widget">
+            <span>Microbit Robot</span>
+            <strong>Ready for delivery</strong>
+            <small>Battery 94% • Connected</small>
+          </div>
+
+          <div class="app-grid">
+            <button class="app-icon-button" id="openDeliveryApp">
+              <span class="app-icon delivery-icon">µB</span>
+              <span>Microbit<br />Delivery</span>
+            </button>
+            <button class="app-icon-button muted-app">
+              <span class="app-icon">📷</span><span>Camera</span>
+            </button>
+            <button class="app-icon-button muted-app">
+              <span class="app-icon">🗺️</span><span>Maps</span>
+            </button>
+            <button class="app-icon-button muted-app">
+              <span class="app-icon">⚙️</span><span>Settings</span>
+            </button>
+          </div>
+
+          <div class="home-instruction">Tap Microbit Delivery</div>
+
+          <div class="dock">
+            <span class="dock-icon">☎️</span>
+            <span class="dock-icon">💬</span>
+            <span class="dock-icon">🌐</span>
+            <span class="dock-icon">🎵</span>
+          </div>
+        </section>
+
+        <!-- DELIVERY APP -->
+        <section class="screen-view app-screen" id="appScreen">
+          <header class="app-header">
+            <div class="status-row app-status">
+              <span>9:41</span>
+              <span>▮▮▮ ᯤ 100%</span>
+            </div>
+            <div class="delivery-location">
+              <div>
+                <small>DELIVER NOW</small>
+                <button>Engineering Lab ▾</button>
+              </div>
+              <button class="profile-button">AK</button>
+            </div>
+            <div class="search-wrap">
+              <span>⌕</span>
+              <input id="searchInput" type="search" placeholder="Search food or restaurants" autocomplete="off" />
+              <button id="clearSearch" aria-label="Clear search">×</button>
+            </div>
+          </header>
+
+          <div class="app-body">
+            <section class="hero-card">
+              <div>
+                <span class="hero-label">MICROBIT EXPRESS</span>
+                <h2>Fast robot delivery.</h2>
+                <p>Food brought to your engineering lab.</p>
+                <button id="browseButton">Browse menu</button>
+              </div>
+              <div class="robot-art">🤖<span>🛵</span></div>
+            </section>
+
+            <section class="category-row" id="categoryRow"></section>
+
+            <div class="section-heading">
+              <div>
+                <h2 id="menuTitle">Popular near you</h2>
+                <p id="resultCount">50 items available</p>
+              </div>
+              <button id="showAllButton">Show all</button>
+            </div>
+
+            <section class="food-grid" id="foodGrid"></section>
+          </div>
+
+          <nav class="bottom-nav">
+            <button class="nav-active">⌂<span>Home</span></button>
+            <button>⌕<span>Browse</span></button>
+            <button id="ordersButton">▤<span>Orders</span></button>
+            <button id="cartButton">🛒<span>Cart</span><b id="cartBadge">0</b></button>
+          </nav>
+
+          <div class="toast" id="toast" role="status"></div>
+          <div class="modal-backdrop" id="blockedModal" aria-hidden="true">
+            <div class="blocked-modal">
+              <div class="blocked-icon">!</div>
+              <h2>Sorry Not Applicable</h2>
+              <p>This delivery app only supports food and non-restricted menu items.</p>
+              <button id="closeBlockedModal">Understood</button>
+            </div>
+          </div>
+
+          <div class="modal-backdrop" id="cartModal" aria-hidden="true">
+            <div class="cart-modal">
+              <div class="cart-modal-top">
+                <h2>Your Cart</h2>
+                <button id="closeCartModal">×</button>
+              </div>
+              <div id="cartItems"></div>
+              <div class="cart-total">
+                <span>Total</span><strong id="cartTotal">$0.00</strong>
+              </div>
+              <button class="checkout-button" id="checkoutButton">Send order to Microbit</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="home-indicator"></div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
