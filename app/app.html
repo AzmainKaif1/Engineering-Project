@@ -2,177 +2,966 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Microbit Delivery App</title>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>Microbit Delivery</title>
+
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
-  <main class="page-shell">
-    <section class="project-info">
+  <main class="project-layout">
+
+    <!-- =========================================
+         PROJECT DESCRIPTION
+    ========================================== -->
+
+    <section class="project-information">
       <p class="eyebrow">ENGINEERING PROJECT</p>
-      <h1>Microbit Delivery App</h1>
+
+      <h1>Microbit Delivery</h1>
+
       <p>
-        Swipe up to unlock the iPhone, tap the green delivery icon, browse food,
-        search the menu, and add items to the cart.
+        A Vanderbilt campus food-delivery prototype with an
+        interactive iPhone, Dynamic Island, real Central Time,
+        restaurant menus, distance pricing, live rider tracking,
+        messaging, reporting, groceries, discounts, and BOGO deals.
       </p>
-      <div class="legend">
-        <span><i class="dot green"></i> Food items are allowed</span>
-        <span><i class="dot red"></i> Restricted products are rejected</span>
+
+      <div class="feature-list">
+        <span>✓ Swipe-up iPhone unlock</span>
+        <span>✓ 50 restaurant and grocery products</span>
+        <span>✓ Vanderbilt campus delivery addresses</span>
+        <span>✓ Live rider updates every five seconds</span>
+        <span>✓ California demo sales tax</span>
       </div>
     </section>
 
-    <section class="phone" aria-label="Interactive iPhone preview">
-      <div class="phone-speaker"></div>
+    <!-- =========================================
+         IPHONE
+    ========================================== -->
+
+    <section class="phone">
+
+      <!-- Dynamic Island -->
+
       <div class="dynamic-island" id="dynamicIsland">
-        <span class="island-dot"></span>
-        <span class="island-text" id="islandText">Microbit Delivery</span>
+        <span class="island-light"></span>
+        <span id="islandText">Microbit Delivery</span>
       </div>
 
-      <div class="screen" id="screen">
-        <!-- LOCK SCREEN -->
-        <section class="screen-view lock-screen active" id="lockScreen">
-          <div class="status-row light-status">
-            <span id="lockTimeSmall">9:41</span>
+      <div class="phone-screen">
+
+        <!-- =====================================
+             LOCK SCREEN
+        ====================================== -->
+
+        <section class="view lock-screen active" id="lockScreen">
+
+          <div class="status-bar light-status">
+            <span class="ct-clock">9:41 AM</span>
             <span>▮▮▮ ᯤ 100%</span>
           </div>
 
           <div class="lock-content">
-            <div class="lock-icon">🔒</div>
-            <div class="lock-date" id="lockDate">Thursday, July 23</div>
-            <div class="lock-time" id="lockTime">9:41</div>
+            <div class="lock-symbol">🔒</div>
+
+            <div class="lock-date" id="lockDate">
+              Thursday, July 23
+            </div>
+
+            <div class="lock-time ct-clock">
+              9:41 AM
+            </div>
+
+            <div class="timezone-label">
+              CENTRAL TIME
+            </div>
           </div>
 
-          <div class="notification-card">
-            <div class="notification-icon">🛵</div>
+          <div class="lock-notification">
+            <div class="notification-logo">µB</div>
+
             <div>
               <strong>Microbit Delivery</strong>
-              <p>Your robot delivery system is ready.</p>
+
+              <p>
+                Your Vanderbilt delivery system is ready.
+              </p>
             </div>
-            <span>now</span>
+
+            <small>now</small>
           </div>
 
           <div class="lock-bottom">
-            <button class="round-button" aria-label="Flashlight">🔦</button>
+
+            <button class="round-button" aria-label="Flashlight">
+              🔦
+            </button>
+
             <div class="swipe-zone" id="swipeZone">
               <div class="swipe-arrow">⌃</div>
-              <div class="swipe-text">Swipe up to unlock</div>
+
+              <div class="swipe-text">
+                Swipe up to unlock
+              </div>
             </div>
-            <button class="round-button" aria-label="Camera">📷</button>
+
+            <button class="round-button" aria-label="Camera">
+              📷
+            </button>
           </div>
         </section>
 
-        <!-- HOME SCREEN -->
-        <section class="screen-view home-screen" id="homeScreen">
-          <div class="status-row dark-status">
-            <span>9:41</span>
+        <!-- =====================================
+             HOME SCREEN
+        ====================================== -->
+
+        <section class="view home-screen" id="homeScreen">
+
+          <div class="status-bar light-status">
+            <span class="ct-clock">9:41 AM</span>
             <span>▮▮▮ ᯤ 100%</span>
           </div>
 
-          <div class="home-widget">
+          <div class="robot-widget">
             <span>Microbit Robot</span>
+
             <strong>Ready for delivery</strong>
-            <small>Battery 94% • Connected</small>
+
+            <small>
+              Battery 94% • Campus connection active
+            </small>
           </div>
 
           <div class="app-grid">
-            <button class="app-icon-button" id="openDeliveryApp">
-              <span class="app-icon delivery-icon">µB</span>
-              <span>Microbit<br />Delivery</span>
+
+            <button class="app-button" id="openAppButton">
+              <span class="app-icon delivery-icon">
+                µB
+              </span>
+
+              <span>
+                Microbit<br />
+                Delivery
+              </span>
             </button>
-            <button class="app-icon-button muted-app">
-              <span class="app-icon">📷</span><span>Camera</span>
+
+            <button class="app-button">
+              <span class="app-icon">📷</span>
+              <span>Camera</span>
             </button>
-            <button class="app-icon-button muted-app">
-              <span class="app-icon">🗺️</span><span>Maps</span>
+
+            <button class="app-button">
+              <span class="app-icon">🗺️</span>
+              <span>Maps</span>
             </button>
-            <button class="app-icon-button muted-app">
-              <span class="app-icon">⚙️</span><span>Settings</span>
+
+            <button class="app-button">
+              <span class="app-icon">⚙️</span>
+              <span>Settings</span>
             </button>
           </div>
 
-          <div class="home-instruction">Tap Microbit Delivery</div>
+          <p class="tap-message">
+            Tap Microbit Delivery
+          </p>
 
-          <div class="dock">
-            <span class="dock-icon">☎️</span>
-            <span class="dock-icon">💬</span>
-            <span class="dock-icon">🌐</span>
-            <span class="dock-icon">🎵</span>
+          <div class="home-dock">
+            <span>☎️</span>
+            <span>💬</span>
+            <span>🌐</span>
+            <span>🎵</span>
           </div>
         </section>
 
-        <!-- DELIVERY APP -->
-        <section class="screen-view app-screen" id="appScreen">
+        <!-- =====================================
+             DELIVERY APPLICATION
+        ====================================== -->
+
+        <section class="view app-screen" id="appScreen">
+
+          <!-- Application header -->
+
           <header class="app-header">
-            <div class="status-row app-status">
-              <span>9:41</span>
-              <span>▮▮▮ ᯤ 100%</span>
+
+            <div class="status-bar dark-status">
+              <span class="ct-clock">9:41 AM</span>
+              <span>CT · ▮▮▮ ᯤ 100%</span>
             </div>
+
             <div class="delivery-location">
-              <div>
-                <small>DELIVER NOW</small>
-                <button>Engineering Lab ▾</button>
-              </div>
-              <button class="profile-button">AK</button>
+
+              <button
+                class="location-button"
+                id="openAddressButton"
+              >
+                <small>DELIVER TO</small>
+
+                <strong id="headerAddress">
+                  Lewis House
+                </strong>
+
+                <span>⌄</span>
+              </button>
+
+              <button class="profile-button">
+                AK
+              </button>
             </div>
-            <div class="search-wrap">
+
+            <div class="search-box">
               <span>⌕</span>
-              <input id="searchInput" type="search" placeholder="Search food or restaurants" autocomplete="off" />
-              <button id="clearSearch" aria-label="Clear search">×</button>
+
+              <input
+                id="searchInput"
+                type="search"
+                autocomplete="off"
+                placeholder="Search food, groceries, or restaurants"
+              />
+
+              <button id="clearSearch" aria-label="Clear search">
+                ×
+              </button>
             </div>
           </header>
 
-          <div class="app-body">
+          <!-- Scrollable application area -->
+
+          <div class="app-body" id="appBody">
+
+            <!-- Hero advertisement -->
+
             <section class="hero-card">
               <div>
-                <span class="hero-label">MICROBIT EXPRESS</span>
-                <h2>Fast robot delivery.</h2>
-                <p>Food brought to your engineering lab.</p>
-                <button id="browseButton">Browse menu</button>
+                <span class="mini-label">
+                  MICROBIT CAMPUS EXPRESS
+                </span>
+
+                <h2>
+                  Vanderbilt delivery, tracked live.
+                </h2>
+
+                <p>
+                  Real Central Time estimates, rider updates,
+                  campus-safe handoff, and delivery protection.
+                </p>
+
+                <button id="browseButton">
+                  Browse restaurants
+                </button>
               </div>
-              <div class="robot-art">🤖<span>🛵</span></div>
+
+              <div class="robot-art">
+                🤖
+                <span>🛵</span>
+              </div>
             </section>
 
-            <section class="category-row" id="categoryRow"></section>
+            <!-- Grocery deal -->
 
-            <div class="section-heading">
+            <section class="deal-banner">
               <div>
-                <h2 id="menuTitle">Popular near you</h2>
-                <p id="resultCount">50 items available</p>
+                <span>STUDENT GROCERY DEAL</span>
+
+                <strong>
+                  BOGO items and student discounts
+                </strong>
               </div>
-              <button id="showAllButton">Show all</button>
+
+              <button id="showDealsButton">
+                View deals
+              </button>
+            </section>
+
+            <!-- Categories -->
+
+            <div
+              class="horizontal-list"
+              id="categoryRow"
+            ></div>
+
+            <!-- Restaurants -->
+
+            <div
+              class="horizontal-list restaurant-list"
+              id="restaurantRow"
+            ></div>
+
+            <!-- Menu heading -->
+
+            <div class="section-heading" id="menuSection">
+              <div>
+                <h2 id="menuTitle">
+                  Popular near you
+                </h2>
+
+                <p id="resultCount">
+                  50 items available
+                </p>
+              </div>
+
+              <button id="showAllButton">
+                Show all
+              </button>
             </div>
 
-            <section class="food-grid" id="foodGrid"></section>
+            <!-- Food cards -->
+
+            <section
+              class="food-grid"
+              id="foodGrid"
+            ></section>
+
+            <!-- =================================
+                 ACTIVE DELIVERY TRACKING
+            ================================== -->
+
+            <section
+              class="tracking-section hidden"
+              id="trackingSection"
+            >
+              <div class="tracking-heading">
+                <div>
+                  <small>ACTIVE DELIVERY</small>
+
+                  <h2 id="trackingStatus">
+                    Order confirmed
+                  </h2>
+                </div>
+
+                <span id="trackingOrderNumber">
+                  #MB0000
+                </span>
+              </div>
+
+              <div class="eta-card">
+                <small>ESTIMATED ARRIVAL</small>
+
+                <strong id="trackingEta">
+                  4:35 PM CT
+                </strong>
+
+                <span id="trackingRemaining">
+                  Approximately 25 minutes
+                </span>
+              </div>
+
+              <!-- Simulated map -->
+
+              <div class="tracking-map">
+                <div class="map-road road-one"></div>
+                <div class="map-road road-two"></div>
+                <div class="map-road road-three"></div>
+
+                <div class="restaurant-marker">
+                  🍽️
+                </div>
+
+                <div class="destination-marker">
+                  🏫
+                </div>
+
+                <div class="rider-marker" id="riderMarker">
+                  🛵
+                </div>
+              </div>
+
+              <div class="progress-track">
+                <div
+                  class="progress-fill"
+                  id="trackingProgress"
+                ></div>
+              </div>
+
+              <div class="live-location-card">
+                <small>LIVE RIDER LOCATION</small>
+
+                <strong id="liveLocation">
+                  Preparing route
+                </strong>
+
+                <span id="lastUpdated">
+                  Updated now
+                </span>
+              </div>
+
+              <div class="rider-card">
+                <div class="rider-photo">🧑🏽‍💼</div>
+
+                <div>
+                  <small>YOUR DELIVERY RIDER</small>
+
+                  <strong id="trackingDriver">
+                    Rider name
+                  </strong>
+
+                  <span id="trackingPhone">
+                    (615) 555-0000
+                  </span>
+                </div>
+
+                <div class="rating-badge">
+                  ★ 4.9
+                </div>
+              </div>
+
+              <div class="handoff-card">
+                <small>SECURE HANDOFF CODE</small>
+
+                <strong id="handoffCode">
+                  0000
+                </strong>
+
+                <p>
+                  Only provide this code when the rider reaches
+                  the approved campus entrance.
+                </p>
+              </div>
+
+              <div class="tracking-actions">
+
+                <button id="messageDriverButton">
+                  💬 Message
+                </button>
+
+                <button id="reportProblemButton">
+                  ⚠ Report
+                </button>
+              </div>
+
+              <div class="safety-information">
+                <h3>Receiver safety</h3>
+
+                <p>
+                  Meet the rider at the selected public entrance.
+                  Do not provide residence access codes or allow
+                  an unknown person into a secured building.
+                </p>
+
+                <h3>Rider safety</h3>
+
+                <p>
+                  Stop only at approved loading or pickup zones,
+                  keep food sealed, verify the four-digit handoff
+                  code, and never enter a private residence room.
+                </p>
+              </div>
+
+              <div class="notification-history">
+                <h3>Delivery updates</h3>
+
+                <div id="notificationList"></div>
+              </div>
+            </section>
           </div>
 
-          <nav class="bottom-nav">
-            <button class="nav-active">⌂<span>Home</span></button>
-            <button>⌕<span>Browse</span></button>
-            <button id="ordersButton">▤<span>Orders</span></button>
-            <button id="cartButton">🛒<span>Cart</span><b id="cartBadge">0</b></button>
+          <!-- =====================================
+               BOTTOM NAVIGATION
+          ====================================== -->
+
+          <nav class="bottom-navigation">
+
+            <button class="active-navigation" id="homeNavigation">
+              ⌂
+              <span>Home</span>
+            </button>
+
+            <button id="dealsNavigation">
+              ％
+              <span>Deals</span>
+            </button>
+
+            <button id="ordersButton">
+              ▤
+              <span>Order</span>
+            </button>
+
+            <button id="cartButton">
+              🛒
+              <span>Cart</span>
+
+              <b class="cart-badge" id="cartBadge">
+                0
+              </b>
+            </button>
           </nav>
 
-          <div class="toast" id="toast" role="status"></div>
-          <div class="modal-backdrop" id="blockedModal" aria-hidden="true">
-            <div class="blocked-modal">
-              <div class="blocked-icon">!</div>
+          <!-- Toast notification -->
+
+          <div class="toast" id="toast"></div>
+
+          <!-- =====================================
+               RESTRICTED SEARCH MODAL
+          ====================================== -->
+
+          <div class="modal-backdrop" id="blockedModal">
+
+            <div class="modal small-modal">
+              <div class="warning-symbol">!</div>
+
               <h2>Sorry Not Applicable</h2>
-              <p>This delivery app only supports food and non-restricted menu items.</p>
-              <button id="closeBlockedModal">Understood</button>
+
+              <p>
+                Microbit Delivery only supports approved food and
+                grocery products. Alcohol, tobacco, vaping,
+                cigarettes, sexual products, and other restricted
+                items cannot be ordered.
+              </p>
+
+              <button
+                class="primary-button"
+                id="closeBlockedModal"
+              >
+                Understood
+              </button>
             </div>
           </div>
 
-          <div class="modal-backdrop" id="cartModal" aria-hidden="true">
-            <div class="cart-modal">
-              <div class="cart-modal-top">
-                <h2>Your Cart</h2>
-                <button id="closeCartModal">×</button>
+          <!-- =====================================
+               ADDRESS MODAL
+          ====================================== -->
+
+          <div class="modal-backdrop" id="addressModal">
+
+            <div class="modal sheet-modal">
+
+              <div class="modal-heading">
+                <div>
+                  <small>VANDERBILT CAMPUS</small>
+                  <h2>Delivery destination</h2>
+                </div>
+
+                <button
+                  class="close-button"
+                  id="closeAddressModal"
+                >
+                  ×
+                </button>
               </div>
-              <div id="cartItems"></div>
-              <div class="cart-total">
-                <span>Total</span><strong id="cartTotal">$0.00</strong>
+
+              <label for="addressSelect">
+                Building or residence
+              </label>
+
+              <select id="addressSelect"></select>
+
+              <label for="addressDetails">
+                Entrance or handoff instructions
+              </label>
+
+              <input
+                id="addressDetails"
+                type="text"
+                maxlength="100"
+                placeholder="Example: Meet outside Lewis House lobby"
+              />
+
+              <div class="information-card">
+                <strong>Campus safety reminder</strong>
+
+                <p>
+                  Select a public entrance or front desk.
+                  Never provide a residence-room access code.
+                </p>
               </div>
-              <button class="checkout-button" id="checkoutButton">Send order to Microbit</button>
+
+              <button
+                class="primary-button"
+                id="saveAddressButton"
+              >
+                Use this destination
+              </button>
+            </div>
+          </div>
+
+          <!-- =====================================
+               SHOPPING CART MODAL
+          ====================================== -->
+
+          <div class="modal-backdrop" id="cartModal">
+
+            <div class="modal sheet-modal cart-modal">
+
+              <div class="modal-heading">
+                <div>
+                  <small id="cartRestaurantName">
+                    YOUR ORDER
+                  </small>
+
+                  <h2>Checkout</h2>
+                </div>
+
+                <button
+                  class="close-button"
+                  id="closeCartModal"
+                >
+                  ×
+                </button>
+              </div>
+
+              <!-- Cart items -->
+
+              <div class="cart-items" id="cartItems"></div>
+
+              <!-- Address -->
+
+              <label for="cartAddressSelect">
+                Deliver to
+              </label>
+
+              <select id="cartAddressSelect"></select>
+
+              <label for="cartAddressDetails">
+                Entrance or room instructions
+              </label>
+
+              <input
+                id="cartAddressDetails"
+                type="text"
+                maxlength="100"
+                placeholder="Meet outside the main entrance"
+              />
+
+              <!-- Delivery type -->
+
+              <fieldset class="delivery-options">
+                <legend>Delivery speed</legend>
+
+                <label class="delivery-option">
+                  <input
+                    type="radio"
+                    name="deliveryMode"
+                    value="scheduled"
+                  />
+
+                  <span>
+                    <strong>Scheduled</strong>
+                    <small>Cheapest delivery fee</small>
+                  </span>
+
+                  <b>Save</b>
+                </label>
+
+                <label class="delivery-option">
+                  <input
+                    type="radio"
+                    name="deliveryMode"
+                    value="regular"
+                    checked
+                  />
+
+                  <span>
+                    <strong>Regular</strong>
+                    <small>Standard campus delivery</small>
+                  </span>
+
+                  <b>Standard</b>
+                </label>
+
+                <label class="delivery-option">
+                  <input
+                    type="radio"
+                    name="deliveryMode"
+                    value="priority"
+                  />
+
+                  <span>
+                    <strong>Priority</strong>
+                    <small>Rider delivers directly to you</small>
+                  </span>
+
+                  <b>Fastest</b>
+                </label>
+              </fieldset>
+
+              <!-- Scheduled time -->
+
+              <div class="hidden" id="scheduleContainer">
+                <label for="scheduleSelect">
+                  Select a Central Time delivery window
+                </label>
+
+                <select id="scheduleSelect"></select>
+              </div>
+
+              <!-- Liquid protection -->
+
+              <div
+                class="liquid-protection hidden"
+                id="liquidProtection"
+              >
+                <div>
+                  <strong>🥤 Liquid item detected</strong>
+
+                  <p>
+                    Add an extra sealed protection layer to reduce
+                    spilling during transportation.
+                  </p>
+                </div>
+
+                <label class="checkbox-row">
+                  <input
+                    type="checkbox"
+                    id="spillProtectionCheckbox"
+                  />
+
+                  Add spill-safe packaging for $1.49
+                </label>
+              </div>
+
+              <!-- Tip -->
+
+              <label for="tipSelect">
+                Rider tip
+              </label>
+
+              <select id="tipSelect">
+                <option value="0">No tip</option>
+                <option value="2">$2.00</option>
+                <option value="3" selected>$3.00</option>
+                <option value="5">$5.00</option>
+                <option value="7">$7.00</option>
+              </select>
+
+              <!-- Estimated time -->
+
+              <div class="checkout-eta">
+                <small>ESTIMATED ARRIVAL</small>
+
+                <strong id="checkoutEta">
+                  Calculating...
+                </strong>
+
+                <span id="checkoutDistance">
+                  Calculating distance...
+                </span>
+              </div>
+
+              <!-- Safety instructions -->
+
+              <div class="information-card">
+                <strong>Receiver instructions</strong>
+
+                <p>
+                  Meet the rider at the selected public entrance.
+                  Check that all seals are intact before accepting
+                  the delivery.
+                </p>
+              </div>
+
+              <div class="information-card">
+                <strong>Delivery-person instructions</strong>
+
+                <p>
+                  Keep hot and cold items separated, use approved
+                  campus stopping areas, verify the handoff code,
+                  and do not enter private residence spaces.
+                </p>
+              </div>
+
+              <!-- Price summary -->
+
+              <div class="price-summary">
+
+                <div>
+                  <span>Subtotal</span>
+                  <strong id="subtotalAmount">$0.00</strong>
+                </div>
+
+                <div class="discount-line">
+                  <span>Discounts and BOGO</span>
+                  <strong id="discountAmount">-$0.00</strong>
+                </div>
+
+                <div>
+                  <span>Service fee</span>
+                  <strong id="serviceFeeAmount">$0.00</strong>
+                </div>
+
+                <div>
+                  <span>Distance delivery fee</span>
+                  <strong id="deliveryFeeAmount">$0.00</strong>
+                </div>
+
+                <div>
+                  <span>Spill-safe packaging</span>
+                  <strong id="packagingAmount">$0.00</strong>
+                </div>
+
+                <div>
+                  <span>California demo tax (7.25%)</span>
+                  <strong id="taxAmount">$0.00</strong>
+                </div>
+
+                <div>
+                  <span>Rider tip</span>
+                  <strong id="tipAmount">$0.00</strong>
+                </div>
+
+                <div class="total-line">
+                  <span>Total</span>
+                  <strong id="totalAmount">$0.00</strong>
+                </div>
+              </div>
+
+              <button
+                class="primary-button"
+                id="placeOrderButton"
+              >
+                Place Microbit order
+              </button>
+            </div>
+          </div>
+
+          <!-- =====================================
+               ORDER CONFIRMATION MODAL
+          ====================================== -->
+
+          <div class="modal-backdrop" id="orderModal">
+
+            <div class="modal small-modal">
+              <div class="success-symbol">✓</div>
+
+              <h2>Order placed</h2>
+
+              <p id="orderConfirmationText">
+                Your order has been sent.
+              </p>
+
+              <div class="confirmation-details">
+                <div>
+                  <small>RIDER</small>
+                  <strong id="confirmationDriver">Name</strong>
+                </div>
+
+                <div>
+                  <small>PHONE</small>
+                  <strong id="confirmationPhone">
+                    (615) 555-0000
+                  </strong>
+                </div>
+
+                <div>
+                  <small>ETA</small>
+                  <strong id="confirmationEta">
+                    4:35 PM CT
+                  </strong>
+                </div>
+
+                <div>
+                  <small>HANDOFF CODE</small>
+                  <strong id="confirmationCode">
+                    0000
+                  </strong>
+                </div>
+              </div>
+
+              <button
+                class="primary-button"
+                id="trackOrderButton"
+              >
+                Track delivery
+              </button>
+            </div>
+          </div>
+
+          <!-- =====================================
+               MESSAGE RIDER MODAL
+          ====================================== -->
+
+          <div class="modal-backdrop" id="messageModal">
+
+            <div class="modal sheet-modal">
+
+              <div class="modal-heading">
+                <div>
+                  <small>LIVE SUPPORT</small>
+                  <h2>Message your rider</h2>
+                </div>
+
+                <button
+                  class="close-button"
+                  id="closeMessageModal"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div class="chat-messages" id="chatMessages"></div>
+
+              <div class="message-composer">
+                <input
+                  id="messageInput"
+                  type="text"
+                  maxlength="150"
+                  placeholder="Send delivery instructions..."
+                />
+
+                <button id="sendMessageButton">
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- =====================================
+               REPORT PROBLEM MODAL
+          ====================================== -->
+
+          <div class="modal-backdrop" id="reportModal">
+
+            <div class="modal sheet-modal">
+
+              <div class="modal-heading">
+                <div>
+                  <small>ORDER SUPPORT</small>
+                  <h2>Report a problem</h2>
+                </div>
+
+                <button
+                  class="close-button"
+                  id="closeReportModal"
+                >
+                  ×
+                </button>
+              </div>
+
+              <label for="problemSelect">
+                What happened?
+              </label>
+
+              <select id="problemSelect">
+                <option>Rider is not moving</option>
+                <option>Food may be delayed</option>
+                <option>Wrong delivery location</option>
+                <option>Missing or incorrect item</option>
+                <option>Food was spilled or damaged</option>
+                <option>Safety concern</option>
+                <option>Other problem</option>
+              </select>
+
+              <label for="problemDetails">
+                Additional details
+              </label>
+
+              <textarea
+                id="problemDetails"
+                rows="5"
+                maxlength="300"
+                placeholder="Describe the problem..."
+              ></textarea>
+
+              <button
+                class="danger-button"
+                id="submitReportButton"
+              >
+                Submit report
+              </button>
             </div>
           </div>
         </section>
