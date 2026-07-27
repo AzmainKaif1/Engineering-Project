@@ -1,7 +1,5 @@
 // ============================================================
-// MAQUEEN AUTONOMOUS DELIVERY ROBOT
-//
-// Board layout:
+// MAQUEEN BLACK-LINE DELIVERY ROBOT
 //
 //                  A
 //                  |
@@ -9,16 +7,22 @@
 //                  |
 //                  C
 //
-// Robot starts at S facing A.
-// Route: A -> B -> C -> D
+// Robot begins at S, physically facing A.
 //
-// Sensor convention used here:
-// 0 = black
-// 1 = white
+// ROBOT BUTTONS:
+// A = choose first station: A, B, C, or D
+// B = confirm selection and start
+//
+// DEFAULT ROUTE:
+// A -> S -> B -> S -> C -> S -> D
+//
+// LINE SENSOR VALUES:
+// 0 = black tape
+// 1 = white board
 // ============================================================
 
 
-// -------------------- STATES --------------------
+// -------------------- ROBOT STATES --------------------
 
 let WAITING = 0
 let OUTBOUND = 1
@@ -29,7 +33,7 @@ let DONE = 4
 let robotState = WAITING
 
 
-// -------------------- SPEED SETTINGS --------------------
+// -------------------- MOTOR SPEEDS --------------------
 
 let FORWARD_SPEED = 42
 let CORRECTION_SPEED = 46
@@ -37,49 +41,53 @@ let SEARCH_SPEED = 25
 let SPIN_SPEED = 35
 
 
-// -------------------- TURN CALIBRATION --------------------
+// -------------------- TURN SETTINGS --------------------
 
-// Adjust these two values after testing.
+// Change these after physically testing the Maqueen.
 let TURN_90_MS = 430
 let TURN_180_MS = 860
 
-// How far to move into the middle after detecting the spawn gap.
+// Distance needed to move into the middle of S.
 let CENTER_ADVANCE_MS = 180
 
-// How far to move forward after turning toward a new destination.
+// Distance needed to leave the middle intersection.
 let LEAVE_CENTER_MS = 250
 
 
 // -------------------- MARKER SETTINGS --------------------
 
-// Small gaps shorter than this are crossed by driving straight.
+// Maximum time allowed while crossing a small white gap.
 let GAP_BRIDGE_MAX_MS = 260
 
-// Minimum and maximum duration for a real marker gap.
+// Valid white marker duration.
 let VALID_GAP_MIN_MS = 35
 let VALID_GAP_MAX_MS = 260
 
-// Two destination gaps must occur within this amount of time.
+// Two white gaps close together indicate a destination.
 let DOUBLE_GAP_WINDOW_MS = 1100
 
-// Ignore the spawn marker immediately after leaving the center.
+// Ignore the spawn gap immediately after leaving S.
 let DEPARTURE_IGNORE_MS = 700
 
-// Ignore the destination marker immediately after turning around.
+// Ignore the destination gaps immediately after turning around.
 let RETURN_IGNORE_MS = 900
 
 
 // -------------------- DELIVERY VARIABLES --------------------
 
 let destinations = ["A", "B", "C", "D"]
+
 let destinationIndex = 0
+let deliveriesCompleted = 0
 
 let leftSensor = 0
 let rightSensor = 0
 
+// -1 means the line was last seen toward the left.
+// 1 means the line was last seen toward the right.
 let lastDirection = 1
 
-// -1 means that a white gap is not currently being crossed.
+// -1 means the robot is not currently crossing white.
 let whiteStartedAt = -1
 
 let lastOutboundGapAt = -10000
@@ -88,11 +96,12 @@ let outboundGapCount = 0
 let legStartedAt = 0
 let returnStartedAt = 0
 
+let stationReadyReceived = false
 let acknowledgmentReceived = false
 
 
 // ============================================================
-// MOTOR FUNCTIONS
+// BASIC MOTOR FUNCTIONS
 // ============================================================
 
 function stopMotors() {
@@ -128,7 +137,8 @@ function reverse() {
     )
 }
 
-// Gentle left correction while following the line.
+
+// Turn gently left while following black tape.
 function correctLeft() {
     maqueen.motorStop(maqueen.Motors.M1)
 
@@ -139,7 +149,8 @@ function correctLeft() {
     )
 }
 
-// Gentle right correction while following the line.
+
+// Turn gently right while following black tape.
 function correctRight() {
     maqueen.motorRun(
         maqueen.Motors.M1,
@@ -150,7 +161,8 @@ function correctRight() {
     maqueen.motorStop(maqueen.Motors.M2)
 }
 
-// Rotate left in place.
+
+// Spin left in place.
 function spinLeft() {
     maqueen.motorRun(
         maqueen.Motors.M1,
@@ -165,7 +177,8 @@ function spinLeft() {
     )
 }
 
-// Rotate right in place while searching.
+
+// Search toward the right when the black tape is lost.
 function searchRight() {
     maqueen.motorRun(
         maqueen.Motors.M1,
@@ -180,7 +193,8 @@ function searchRight() {
     )
 }
 
-// Rotate left in place while searching.
+
+// Search toward the left when the black tape is lost.
 function searchLeft() {
     maqueen.motorRun(
         maqueen.Motors.M1,
@@ -211,8 +225,9 @@ function turnLeft90Degrees() {
     basic.pause(150)
 }
 
+
 function turnAround() {
-    // Back away from the edge or destination first.
+    // Move away from the destination before turning.
     reverse()
     basic.pause(180)
 
@@ -227,48 +242,86 @@ function turnAround() {
 }
 
 
+// Robot physically begins facing A.
+// This rotates it toward the selected first station.
+function faceSelectedFirstStation() {
+    let numberOfLeftTurns = (4 - destinationIndex) % 4
+
+    for (
+        let turnNumber = 0;
+        turnNumber < numberOfLeftTurns;
+        turnNumber++
+    ) {
+        turnLeft90Degrees()
+    }
+}
+
+
 // ============================================================
-// RADIO DELIVERY FUNCTIONS
+// RADIO FUNCTIONS
 // ============================================================
 
 function currentDestination(): string {
     return destinations[destinationIndex]
 }
 
-function deliverFood() {
-    let station = currentDestination()
+
+// Ask the selected station whether it is turned on and ready.
+function waitForCurrentStation() {
+    stationReadyReceived = false
 
     stopMotors()
+    basic.showString(currentDestination())
 
-    // Show which station has been reached.
-    basic.showString(station)
+    while (!stationReadyReceived) {
+        radio.sendString(
+            "CALL:" + currentDestination()
+        )
 
+        basic.pause(250)
+    }
+
+    basic.showIcon(IconNames.Yes)
+    basic.pause(300)
+
+    // Display the current station letter.
+    basic.showString(currentDestination())
+}
+
+
+// Tell the station that the Maqueen reached it.
+function deliverFood() {
     acknowledgmentReceived = false
 
-    // Send several times in case a radio packet is missed.
-    for (let attempt = 0; attempt < 10; attempt++) {
-        if (!acknowledgmentReceived) {
-            radio.sendString("DELIVER:" + station)
-            basic.pause(180)
-        }
+    stopMotors()
+    basic.showString(currentDestination())
+
+    while (!acknowledgmentReceived) {
+        radio.sendString(
+            "ARRIVED:" + currentDestination()
+        )
+
+        basic.pause(250)
     }
 
-    if (acknowledgmentReceived) {
-        basic.showIcon(IconNames.Yes)
-    } else {
-        // Delivery message was sent, but no confirmation returned.
-        basic.showIcon(IconNames.No)
-    }
-
+    // The correct station confirmed the delivery.
+    basic.showIcon(IconNames.Yes)
     basic.pause(500)
 }
 
 
-// Receive confirmation from A, B, C or D.
-radio.onReceivedString(function (receivedString) {
+// Receive messages from Stations A, B, C, and D.
+radio.onReceivedString(function (message) {
     if (
-        robotState == BUSY &&
-        receivedString == "ACK:" + currentDestination()
+        message ==
+        "READY:" + currentDestination()
+    ) {
+        stationReadyReceived = true
+    }
+
+    if (
+        message ==
+        "ACK:" + currentDestination()
     ) {
         acknowledgmentReceived = true
     }
@@ -276,16 +329,18 @@ radio.onReceivedString(function (receivedString) {
 
 
 // ============================================================
-// DESTINATION AND SPAWN HANDLING
+// DESTINATION HANDLING
 // ============================================================
 
 function destinationReached() {
     robotState = BUSY
+
     stopMotors()
 
+    // Wait until the correct station confirms delivery.
     deliverFood()
 
-    // Turn around and begin returning to spawn.
+    // Turn around only after receiving ACK.
     turnAround()
 
     whiteStartedAt = -1
@@ -297,39 +352,52 @@ function destinationReached() {
 
     forward()
 
-    // Move away from the destination marker.
+    // Move away from the two destination markers.
     basic.pause(250)
 }
+
+
+// ============================================================
+// SPAWN HANDLING
+// ============================================================
 
 function spawnReached() {
     robotState = BUSY
 
-    // The robot has just crossed the single white spawn marker.
-    // Continue slightly farther so its center reaches the intersection.
+    // Move farther so the center of the car reaches S.
     forward()
     basic.pause(CENTER_ADVANCE_MS)
 
     stopMotors()
     basic.pause(250)
 
-    destinationIndex += 1
+    deliveriesCompleted += 1
 
-    // D was the final delivery.
-    if (destinationIndex >= destinations.length) {
+    // Four stations have been completed.
+    if (deliveriesCompleted >= 4) {
         robotState = DONE
 
         radio.sendString("ALL_DONE")
 
         basic.showIcon(IconNames.Yes)
         stopMotors()
+
         return
     }
 
-    // Show the next destination while stopped.
+    // Move to the next clockwise destination.
+    destinationIndex =
+        (destinationIndex + 1) %
+        destinations.length
+
+    // Flash the next station letter.
     basic.showString(currentDestination())
 
-    // Because destinations are arranged clockwise, turning left
-    // after returning from each arm points toward the next arm.
+    // Make sure the next station is communicating.
+    waitForCurrentStation()
+
+    // A -> B -> C -> D requires one left turn
+    // after returning from each station.
     turnLeft90Degrees()
 
     whiteStartedAt = -1
@@ -341,57 +409,61 @@ function spawnReached() {
 
     forward()
 
-    // Clear the center intersection before normal tracking resumes.
+    // Clear the middle intersection.
     basic.pause(LEAVE_CENTER_MS)
 }
 
 
 // ============================================================
-// GAP / LOCATION DETECTION
+// WHITE MARKER DETECTION
 // ============================================================
 
 function registerCompletedGap(): boolean {
-    let now = input.runningTime()
+    let currentTime = input.runningTime()
 
-    // --------------------------------------------------------
-    // Traveling from spawn to a destination
-    // --------------------------------------------------------
+    // Traveling from S toward a station.
     if (robotState == OUTBOUND) {
 
-        // Ignore the single spawn gap immediately after departure.
-        if (now - legStartedAt < DEPARTURE_IGNORE_MS) {
+        // Ignore the spawn marker immediately after departure.
+        if (
+            currentTime - legStartedAt <
+            DEPARTURE_IGNORE_MS
+        ) {
             return false
         }
 
-        // Check whether this gap occurred shortly after another gap.
-        if (now - lastOutboundGapAt <= DOUBLE_GAP_WINDOW_MS) {
+        // Determine whether two gaps happened close together.
+        if (
+            currentTime - lastOutboundGapAt <=
+            DOUBLE_GAP_WINDOW_MS
+        ) {
             outboundGapCount += 1
         } else {
             outboundGapCount = 1
         }
 
-        lastOutboundGapAt = now
+        lastOutboundGapAt = currentTime
 
-        // Two quick gaps mean the destination marker.
+        // Two white gaps mean the destination was reached.
         if (outboundGapCount >= 2) {
             destinationReached()
             return true
         }
     }
 
-    // --------------------------------------------------------
-    // Returning from a destination to spawn
-    // --------------------------------------------------------
+
+    // Traveling from a station back toward S.
     if (robotState == RETURNING) {
 
-        // Ignore the destination's two gaps immediately after
-        // turning around.
-        if (now - returnStartedAt < RETURN_IGNORE_MS) {
+        // Ignore the destination markers after turning around.
+        if (
+            currentTime - returnStartedAt <
+            RETURN_IGNORE_MS
+        ) {
             return false
         }
 
-        // The first proper gap after the ignore period is the
-        // single spawn marker.
+        // The next single white gap is the spawn marker.
         spawnReached()
         return true
     }
@@ -401,7 +473,7 @@ function registerCompletedGap(): boolean {
 
 
 // ============================================================
-// LINE FOLLOWING
+// BLACK-TAPE LINE FOLLOWING
 // ============================================================
 
 function lineFollowingStep() {
@@ -413,26 +485,32 @@ function lineFollowingStep() {
         maqueen.Patrol.PatrolRight
     )
 
-    let now = input.runningTime()
+    let currentTime = input.runningTime()
+
 
     // --------------------------------------------------------
     // BOTH SENSORS SEE WHITE
     // --------------------------------------------------------
 
-    if (leftSensor == 1 && rightSensor == 1) {
-
+    if (
+        leftSensor == 1 &&
+        rightSensor == 1
+    ) {
         if (whiteStartedAt == -1) {
-            whiteStartedAt = now
+            whiteStartedAt = currentTime
         }
 
-        let whiteDuration = now - whiteStartedAt
+        let whiteDuration =
+            currentTime - whiteStartedAt
 
-        // Continue straight across short white marker gaps.
-        if (whiteDuration <= GAP_BRIDGE_MAX_MS) {
+        // Keep moving across a small marker gap.
+        if (
+            whiteDuration <=
+            GAP_BRIDGE_MAX_MS
+        ) {
             forward()
         } else {
-            // If white lasts too long, the robot probably lost
-            // the line instead of crossing a marker.
+            // Too much white means the robot lost the black tape.
             if (lastDirection == -1) {
                 searchLeft()
             } else {
@@ -443,17 +521,22 @@ function lineFollowingStep() {
         return
     }
 
+
     // --------------------------------------------------------
-    // THE ROBOT HAS FINISHED CROSSING A WHITE GAP
+    // FINISHED CROSSING A WHITE GAP
     // --------------------------------------------------------
 
     if (whiteStartedAt != -1) {
-        let completedGapDuration = now - whiteStartedAt
+        let completedGapDuration =
+            currentTime - whiteStartedAt
+
         whiteStartedAt = -1
 
         if (
-            completedGapDuration >= VALID_GAP_MIN_MS &&
-            completedGapDuration <= VALID_GAP_MAX_MS
+            completedGapDuration >=
+            VALID_GAP_MIN_MS &&
+            completedGapDuration <=
+            VALID_GAP_MAX_MS
         ) {
             if (registerCompletedGap()) {
                 return
@@ -461,21 +544,31 @@ function lineFollowingStep() {
         }
     }
 
+
     // --------------------------------------------------------
-    // NORMAL BLACK-LINE FOLLOWING
+    // NORMAL BLACK-TAPE TRACKING
     // --------------------------------------------------------
 
-    if (leftSensor == 0 && rightSensor == 0) {
-        // Both sensors see black.
+    if (
+        leftSensor == 0 &&
+        rightSensor == 0
+    ) {
+        // Both sensors detect black tape.
         forward()
 
-    } else if (leftSensor == 0 && rightSensor == 1) {
-        // Black line is under the left sensor.
+    } else if (
+        leftSensor == 0 &&
+        rightSensor == 1
+    ) {
+        // Black tape is under the left sensor.
         lastDirection = -1
         correctLeft()
 
-    } else if (leftSensor == 1 && rightSensor == 0) {
-        // Black line is under the right sensor.
+    } else if (
+        leftSensor == 1 &&
+        rightSensor == 0
+    ) {
+        // Black tape is under the right sensor.
         lastDirection = 1
         correctRight()
     }
@@ -483,20 +576,41 @@ function lineFollowingStep() {
 
 
 // ============================================================
-// START BUTTON
+// ROBOT BUTTON CONTROLS
 // ============================================================
 
+// Button A cycles through A, B, C, and D.
 input.onButtonPressed(Button.A, function () {
     if (robotState != WAITING) {
         return
     }
 
-    destinationIndex = 0
+    destinationIndex =
+        (destinationIndex + 1) %
+        destinations.length
+
+    basic.showString(currentDestination())
+})
+
+
+// Button B confirms the displayed station and begins.
+input.onButtonPressed(Button.B, function () {
+    if (robotState != WAITING) {
+        return
+    }
+
+    robotState = BUSY
+
+    deliveriesCompleted = 0
     outboundGapCount = 0
     lastOutboundGapAt = -10000
     whiteStartedAt = -1
 
-    basic.showString(currentDestination())
+    // Make sure the selected station answers.
+    waitForCurrentStation()
+
+    // Robot begins physically facing Station A.
+    faceSelectedFirstStation()
 
     robotState = OUTBOUND
     legStartedAt = input.runningTime()
@@ -510,18 +624,16 @@ input.onButtonPressed(Button.A, function () {
 // INITIAL SETUP
 // ============================================================
 
-// Every Maqueen and station micro:bit must use group 17.
+// Every micro:bit must use radio group 17.
 radio.setGroup(17)
+
+// Maximum radio power.
+radio.setTransmitPower(7)
 
 stopMotors()
 
-basic.showLeds(`
-    . # # # .
-    # . # . #
-    # . # . #
-    # . . . #
-    . # # # .
-`)
+// A is the default starting station.
+basic.showString(currentDestination())
 
 
 // ============================================================
@@ -529,7 +641,10 @@ basic.showLeds(`
 // ============================================================
 
 basic.forever(function () {
-    if (robotState == OUTBOUND || robotState == RETURNING) {
+    if (
+        robotState == OUTBOUND ||
+        robotState == RETURNING
+    ) {
         lineFollowingStep()
     } else {
         stopMotors()
