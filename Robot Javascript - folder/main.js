@@ -26,7 +26,7 @@ let RETURNING = 2
 let BUSY = 3
 let DONE = 4
 
-let state = WAITING
+let robotState = WAITING
 
 
 // -------------------- SPEED SETTINGS --------------------
@@ -267,7 +267,7 @@ function deliverFood() {
 // Receive confirmation from A, B, C or D.
 radio.onReceivedString(function (receivedString) {
     if (
-        state == BUSY &&
+        robotState == BUSY &&
         receivedString == "ACK:" + currentDestination()
     ) {
         acknowledgmentReceived = true
@@ -280,7 +280,7 @@ radio.onReceivedString(function (receivedString) {
 // ============================================================
 
 function destinationReached() {
-    state = BUSY
+    robotState = BUSY
     stopMotors()
 
     deliverFood()
@@ -292,7 +292,7 @@ function destinationReached() {
     outboundGapCount = 0
     lastOutboundGapAt = -10000
 
-    state = RETURNING
+    robotState = RETURNING
     returnStartedAt = input.runningTime()
 
     forward()
@@ -302,7 +302,7 @@ function destinationReached() {
 }
 
 function spawnReached() {
-    state = BUSY
+    robotState = BUSY
 
     // The robot has just crossed the single white spawn marker.
     // Continue slightly farther so its center reaches the intersection.
@@ -316,7 +316,7 @@ function spawnReached() {
 
     // D was the final delivery.
     if (destinationIndex >= destinations.length) {
-        state = DONE
+        robotState = DONE
 
         radio.sendString("ALL_DONE")
 
@@ -336,7 +336,7 @@ function spawnReached() {
     outboundGapCount = 0
     lastOutboundGapAt = -10000
 
-    state = OUTBOUND
+    robotState = OUTBOUND
     legStartedAt = input.runningTime()
 
     forward()
@@ -356,7 +356,7 @@ function registerCompletedGap(): boolean {
     // --------------------------------------------------------
     // Traveling from spawn to a destination
     // --------------------------------------------------------
-    if (state == OUTBOUND) {
+    if (robotState == OUTBOUND) {
 
         // Ignore the single spawn gap immediately after departure.
         if (now - legStartedAt < DEPARTURE_IGNORE_MS) {
@@ -382,7 +382,7 @@ function registerCompletedGap(): boolean {
     // --------------------------------------------------------
     // Returning from a destination to spawn
     // --------------------------------------------------------
-    if (state == RETURNING) {
+    if (robotState == RETURNING) {
 
         // Ignore the destination's two gaps immediately after
         // turning around.
@@ -487,7 +487,7 @@ function lineFollowingStep() {
 // ============================================================
 
 input.onButtonPressed(Button.A, function () {
-    if (state != WAITING) {
+    if (robotState != WAITING) {
         return
     }
 
@@ -498,7 +498,7 @@ input.onButtonPressed(Button.A, function () {
 
     basic.showString(currentDestination())
 
-    state = OUTBOUND
+    robotState = OUTBOUND
     legStartedAt = input.runningTime()
 
     forward()
@@ -529,7 +529,7 @@ basic.showLeds(`
 // ============================================================
 
 basic.forever(function () {
-    if (state == OUTBOUND || state == RETURNING) {
+    if (robotState == OUTBOUND || robotState == RETURNING) {
         lineFollowingStep()
     } else {
         stopMotors()
