@@ -30,7 +30,21 @@ let robotState = WAITING
 let FORWARD_SPEED = 42
 let CORRECTION_SPEED = 46
 let SEARCH_SPEED = 25
-let SPIN_SPEED = 35
+
+// Lowered slightly from 35. Fast spins are more sensitive to wheel
+// slip on hard floors, which makes TURN_90_MS/TURN_180_MS less
+// repeatable. A slightly slower spin tends to land closer to the
+// same angle each time, but you'll still need to re-check the turn
+// timings below whenever the battery has drained noticeably, since
+// these are open-loop (timed) turns with no angle feedback.
+let SPIN_SPEED = 30
+
+// Current commanded forward speed. Starts at FORWARD_SPEED and gets
+// throttled down by checkArrivalOutbound() as the robot nears a
+// building, then reset back to FORWARD_SPEED at the start of each
+// new leg. forward() always drives at whatever this is currently
+// set to.
+let forwardSpeed = FORWARD_SPEED
 
 
 // -------------------- TURN SETTINGS (TUNE THESE) --------------------
@@ -42,8 +56,21 @@ let LEAVE_CENTER_MS = 250
 
 // -------------------- ULTRASONIC SETTINGS (TUNE THESE) --------------------
 
-// Distance in cm at which the robot counts the building as "reached".
-let ARRIVAL_DISTANCE_CM = 8
+// Distance in cm at which the robot counts the building as "reached"
+// and stops for real. Raised from 8 to 10 — at 8cm there usually
+// isn't enough room left to fully bleed off momentum before contact,
+// especially since the last stretch is now driven at CREEP_SPEED.
+let ARRIVAL_DISTANCE_CM = 10
+
+// Distance in cm at which the robot starts slowing to CREEP_SPEED
+// instead of full FORWARD_SPEED. Approaching slowly gives much less
+// momentum to shed at the final stop, which is the main fix for
+// "doesn't stop in time and hits the object."
+let SLOWDOWN_DISTANCE_CM = 30
+
+// Slow approach speed used between SLOWDOWN_DISTANCE_CM and
+// ARRIVAL_DISTANCE_CM.
+let CREEP_SPEED = 20
 
 // Ignore ultrasonic readings right after leaving spawn, so it doesn't
 // falsely trigger on something behind it or on sensor noise.
@@ -107,8 +134,8 @@ function stopMotors() {
 }
 
 function forward() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, FORWARD_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, FORWARD_SPEED)
+    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, forwardSpeed)
+    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, forwardSpeed)
 }
 
 function reverse() {
@@ -189,7 +216,7 @@ function readDistanceCm(): number {
     // If this block name doesn't match your extension version,
     // check the Maqueen category in the blocks editor for the
     // exact "Ultrasonic sensor distance (cm)" block and swap it in.
-    return maqueen.Ultrasonic(maqueen.PingUnit.Centimeters)
+    return maqueen.Ultrasonic()
 }
 
 
@@ -205,6 +232,9 @@ function performArrivalRoutine() {
     basic.pause(DELIVERY_PAUSE_MS)
 
     turnAround()
+
+    // Back to full speed for the return leg.
+    forwardSpeed = FORWARD_SPEED
 
     robotState = RETURNING
     legStartedAt = input.runningTime()
@@ -226,8 +256,20 @@ function checkArrivalOutbound() {
 
     // 0 usually means an invalid/echo-timeout reading on this sensor;
     // ignore those instead of treating them as "very close".
-    if (distance > 0 && distance <= ARRIVAL_DISTANCE_CM) {
+    if (distance <= 0) {
+        return
+    }
+
+    if (distance <= ARRIVAL_DISTANCE_CM) {
         performArrivalRoutine()
+
+    } else if (distance <= SLOWDOWN_DISTANCE_CM) {
+        // Close enough to start easing off — creep the rest of the
+        // way in so there's much less momentum to shed at the stop.
+        forwardSpeed = CREEP_SPEED
+
+    } else {
+        forwardSpeed = FORWARD_SPEED
     }
 }
 
@@ -254,6 +296,10 @@ function handleSpawnReached() {
 
     // Advance to the next destination in the fixed loop.
     destinationIndex = (destinationIndex + 1) % destinations.length
+
+    // Full speed heading back out; checkArrivalOutbound() will slow
+    // it down again as it nears the next building.
+    forwardSpeed = FORWARD_SPEED
 
     robotState = OUTBOUND
     legStartedAt = input.runningTime()
@@ -313,6 +359,7 @@ input.onButtonPressed(Button.B, function () {
     }
 
     destinationIndex = 0
+    forwardSpeed = FORWARD_SPEED
     robotState = OUTBOUND
     legStartedAt = input.runningTime()
 
