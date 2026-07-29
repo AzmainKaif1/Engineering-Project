@@ -1,345 +1,217 @@
 // ============================================================
-// MAQUEEN ULTRASONIC DELIVERY ROBOT (no radio, no tape markers)
+// SIMPLE MAQUEEN ROUTE
 //
-//                  A
-//                  |
-//            D ----S---- B
-//                  |
-//                  C
+// 1. Start on the middle vertical black line.
+// 2. Press Button A.
+// 3. Robot drives straight to the intersection.
+// 4. Robot turns left.
+// 5. Robot follows the black tape forever.
 //
-// Robot begins at S, physically facing A.
-// LOOP ORDER: A -> S -> B -> S -> D -> S -> C -> S -> (repeat forever)
+// Button A = start
+// Button B = stop
 //
-// Arrival at a station = ultrasonic sensor detects the cardboard
-// building close ahead. No radio, no tape gaps needed.
+// Maqueen sensor values:
+// 0 = black
+// 1 = white
 // ============================================================
 
 
-// -------------------- ROBOT STATES --------------------
+// ---------------- SPEED SETTINGS ----------------
 
-let WAITING = 0
-let OUTBOUND = 1
-let RETURNING = 2
-let BUSY = 3
-
-let robotState = WAITING
+let FORWARD_SPEED = 30
+let CORRECTION_SPEED = 35
+let SEARCH_SPEED = 22
+let TURN_SPEED = 30
 
 
-// -------------------- MOTOR SPEEDS --------------------
+// ---------------- TIMING SETTINGS ----------------
 
-let FORWARD_SPEED = 42
-let CORRECTION_SPEED = 46
-let SEARCH_SPEED = 25
+// Change this until the robot reaches the middle intersection.
+let STRAIGHT_TIME_MS = 1600
 
-// Lowered slightly from 35. Fast spins are more sensitive to wheel
-// slip on hard floors, which makes TURN_90_MS/TURN_180_MS less
-// repeatable. A slightly slower spin tends to land closer to the
-// same angle each time, but you'll still need to re-check the turn
-// timings below whenever the battery has drained noticeably, since
-// these are open-loop (timed) turns with no angle feedback.
-let SPIN_SPEED = 30
+// Change this until the robot makes a proper 90-degree left turn.
+let LEFT_TURN_TIME_MS = 430
 
-// Current commanded forward speed. Starts at FORWARD_SPEED and gets
-// throttled down by checkArrivalOutbound() as the robot nears a
-// building, then reset back to FORWARD_SPEED at the start of each
-// new leg. forward() always drives at whatever this is currently
-// set to.
-let forwardSpeed = FORWARD_SPEED
+// Move slightly forward after turning left.
+let AFTER_TURN_TIME_MS = 250
 
 
-// -------------------- TURN SETTINGS (TUNE THESE) --------------------
+// ---------------- VARIABLES ----------------
 
-let TURN_90_MS = 430
-let TURN_180_MS = 860
-let LEAVE_CENTER_MS = 250
+let started = false
+let stopped = false
 
-
-// -------------------- ULTRASONIC SETTINGS (TUNE THESE) --------------------
-
-// Distance in cm at which the robot counts the building as "reached"
-// and stops for real. Raised from 8 to 10 — at 8cm there usually
-// isn't enough room left to fully bleed off momentum before contact,
-// especially since the last stretch is now driven at CREEP_SPEED.
-let ARRIVAL_DISTANCE_CM = 10
-
-// Distance in cm at which the robot starts slowing to CREEP_SPEED
-// instead of full FORWARD_SPEED. Approaching slowly gives much less
-// momentum to shed at the final stop, which is the main fix for
-// "doesn't stop in time and hits the object."
-let SLOWDOWN_DISTANCE_CM = 30
-
-// Slow approach speed used between SLOWDOWN_DISTANCE_CM and
-// ARRIVAL_DISTANCE_CM.
-let CREEP_SPEED = 20
-
-// Ignore ultrasonic readings right after leaving spawn, so it doesn't
-// falsely trigger on something behind it or on sensor noise.
-let DEPARTURE_IGNORE_MS = 800
-
-// How long to sit at the building before turning around (feels like a delivery).
-let DELIVERY_PAUSE_MS = 800
-
-
-// -------------------- RETURN-TO-SPAWN TIMING (TUNE THESE) --------------------
-
-// Since there are no tape gaps at S anymore, we use a timed drive
-// to guess when the robot is back at the center. Measure how long
-// it takes your robot to drive from each station back to S and set these.
-let RETURN_DRIVE_TIME_MS = 3000
-
-
-// -------------------- ROUTE ORDER & TURNS AT SPAWN --------------------
-
-// Fixed loop order, not user-selectable.
-let destinations = ["A", "B", "D", "C"]
-let destinationIndex = 0
-
-// TURN PLAN — describes the turn made AT SPAWN after returning from
-// destinations[i], before heading out to the next one in the list.
-// direction: "left" or "right", turns: how many 90 degree turns.
-//
-// A -> B  : 1 left turn   (adjacent arm)
-// B -> D  : 2 left turns  (opposite arm, 180 degrees)
-// D -> C  : 1 right turn  (adjacent arm, other direction)
-// C -> A  : 2 left turns  (opposite arm, 180 degrees, loops back)
-//
-// IMPORTANT: this is a best-guess based on the geometry of your +
-// track. Left/right may come out backwards depending on which way
-// your motors actually spin for turnLeft90Degrees(). Test it and
-// swap "left"/"right" below if it turns the wrong way.
-let turnPlan = [
-    { direction: "left", turns: 1 },   // after A -> go to B
-    { direction: "left", turns: 2 },   // after B -> go to D
-    { direction: "right", turns: 1 },  // after D -> go to C
-    { direction: "left", turns: 2 }    // after C -> go to A (loop)
-]
-
-
-// -------------------- LINE FOLLOWING STATE --------------------
-
-let leftSensor = 0
-let rightSensor = 0
-let lastDirection = 1   // -1 = line last seen left, 1 = last seen right
-
-let legStartedAt = 0
+// -1 means the line was last seen on the left.
+// 1 means the line was last seen on the right.
+let lastDirection = 1
 
 
 // ============================================================
-// BASIC MOTOR FUNCTIONS
+// MOTOR FUNCTIONS
 // ============================================================
 
-function stopMotors() {
+function stopRobot() {
     maqueen.motorStop(maqueen.Motors.M1)
     maqueen.motorStop(maqueen.Motors.M2)
 }
 
-function forward() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, forwardSpeed)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, forwardSpeed)
+
+function moveForward() {
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        FORWARD_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        FORWARD_SPEED
+    )
 }
 
-function reverse() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CCW, FORWARD_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CCW, FORWARD_SPEED)
-}
 
 function correctLeft() {
     maqueen.motorStop(maqueen.Motors.M1)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, CORRECTION_SPEED)
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        CORRECTION_SPEED
+    )
 }
 
+
 function correctRight() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, CORRECTION_SPEED)
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        CORRECTION_SPEED
+    )
+
     maqueen.motorStop(maqueen.Motors.M2)
 }
 
+
 function spinLeft() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CCW, SPIN_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, SPIN_SPEED)
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CCW,
+        TURN_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        TURN_SPEED
+    )
 }
 
-function spinRight() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, SPIN_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CCW, SPIN_SPEED)
-}
-
-function searchRight() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, SEARCH_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CCW, SEARCH_SPEED)
-}
 
 function searchLeft() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CCW, SEARCH_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, SEARCH_SPEED)
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CCW,
+        SEARCH_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        SEARCH_SPEED
+    )
+}
+
+
+function searchRight() {
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        SEARCH_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CCW,
+        SEARCH_SPEED
+    )
 }
 
 
 // ============================================================
-// LARGE TURN FUNCTIONS
+// INITIAL MOVEMENT
 // ============================================================
 
-function turnLeft90Degrees() {
-    stopMotors()
-    basic.pause(100)
+function goStraightThenTurnLeft() {
+    // Drive straight from the starting point.
+    moveForward()
+    basic.pause(STRAIGHT_TIME_MS)
+
+    stopRobot()
+    basic.pause(150)
+
+    // Turn left at the middle intersection.
     spinLeft()
-    basic.pause(TURN_90_MS)
-    stopMotors()
-    basic.pause(150)
-}
+    basic.pause(LEFT_TURN_TIME_MS)
 
-function turnRight90Degrees() {
-    stopMotors()
+    stopRobot()
+    basic.pause(150)
+
+    // Move onto the horizontal black line.
+    moveForward()
+    basic.pause(AFTER_TURN_TIME_MS)
+
+    stopRobot()
     basic.pause(100)
-    spinRight()
-    basic.pause(TURN_90_MS)
-    stopMotors()
-    basic.pause(150)
-}
-
-function turnAround() {
-    reverse()
-    basic.pause(180)
-    stopMotors()
-    basic.pause(100)
-    spinLeft()
-    basic.pause(TURN_180_MS)
-    stopMotors()
-    basic.pause(150)
 }
 
 
 // ============================================================
-// ULTRASONIC READING
+// BLACK-LINE FOLLOWING
 // ============================================================
 
-function readDistanceCm(): number {
-    // If this block name doesn't match your extension version,
-    // check the Maqueen category in the blocks editor for the
-    // exact "Ultrasonic sensor distance (cm)" block and swap it in.
-    return maqueen.Ultrasonic()
-}
+function followBlackLine() {
+    let leftSensor = maqueen.readPatrol(
+        maqueen.Patrol.PatrolLeft
+    )
+
+    let rightSensor = maqueen.readPatrol(
+        maqueen.Patrol.PatrolRight
+    )
 
 
-// ============================================================
-// ARRIVAL AT A STATION (ultrasonic-triggered)
-// ============================================================
-
-function performArrivalRoutine() {
-    robotState = BUSY
-
-    stopMotors()
-    basic.showIcon(IconNames.Happy)
-    basic.pause(DELIVERY_PAUSE_MS)
-
-    turnAround()
-
-    // Back to full speed for the return leg.
-    forwardSpeed = FORWARD_SPEED
-
-    robotState = RETURNING
-    legStartedAt = input.runningTime()
-
-    forward()
-}
-
-
-// Called every loop tick while OUTBOUND.
-function checkArrivalOutbound() {
-    let currentTime = input.runningTime()
-
-    // Ignore the sensor right after leaving spawn.
-    if (currentTime - legStartedAt < DEPARTURE_IGNORE_MS) {
-        return
+    // Both sensors detect black.
+    if (
+        leftSensor == 0 &&
+        rightSensor == 0
+    ) {
+        moveForward()
     }
 
-    let distance = readDistanceCm()
 
-    // 0 usually means an invalid/echo-timeout reading on this sensor;
-    // ignore those instead of treating them as "very close".
-    if (distance <= 0) {
-        return
-    }
-
-    if (distance <= ARRIVAL_DISTANCE_CM) {
-        performArrivalRoutine()
-
-    } else if (distance <= SLOWDOWN_DISTANCE_CM) {
-        // Close enough to start easing off — creep the rest of the
-        // way in so there's much less momentum to shed at the stop.
-        forwardSpeed = CREEP_SPEED
-
-    } else {
-        forwardSpeed = FORWARD_SPEED
-    }
-}
-
-
-// ============================================================
-// RETURNING TO SPAWN (timer-based)
-// ============================================================
-
-function handleSpawnReached() {
-    robotState = BUSY
-
-    stopMotors()
-    basic.pause(200)
-
-    let plan = turnPlan[destinationIndex]
-
-    for (let turnNumber = 0; turnNumber < plan.turns; turnNumber++) {
-        if (plan.direction == "right") {
-            turnRight90Degrees()
-        } else {
-            turnLeft90Degrees()
-        }
-    }
-
-    // Advance to the next destination in the fixed loop.
-    destinationIndex = (destinationIndex + 1) % destinations.length
-
-    // Full speed heading back out; checkArrivalOutbound() will slow
-    // it down again as it nears the next building.
-    forwardSpeed = FORWARD_SPEED
-
-    robotState = OUTBOUND
-    legStartedAt = input.runningTime()
-
-    forward()
-    basic.pause(LEAVE_CENTER_MS)
-}
-
-
-// Called every loop tick while RETURNING.
-function checkSpawnReturn() {
-    let currentTime = input.runningTime()
-
-    if (currentTime - legStartedAt >= RETURN_DRIVE_TIME_MS) {
-        handleSpawnReached()
-    }
-}
-
-
-// ============================================================
-// BLACK-TAPE LINE FOLLOWING (no gap/marker logic needed)
-// ============================================================
-
-function lineFollowingStep() {
-    leftSensor = maqueen.readPatrol(maqueen.Patrol.PatrolLeft)
-    rightSensor = maqueen.readPatrol(maqueen.Patrol.PatrolRight)
-
-    if (leftSensor == 0 && rightSensor == 0) {
-        forward()
-
-    } else if (leftSensor == 0 && rightSensor == 1) {
+    // Black tape is under the left sensor.
+    else if (
+        leftSensor == 0 &&
+        rightSensor == 1
+    ) {
         lastDirection = -1
         correctLeft()
+    }
 
-    } else if (leftSensor == 1 && rightSensor == 0) {
+
+    // Black tape is under the right sensor.
+    else if (
+        leftSensor == 1 &&
+        rightSensor == 0
+    ) {
         lastDirection = 1
         correctRight()
+    }
 
-    } else {
-        // Both sensors see white — line lost, search for it.
+
+    // Both sensors detect white.
+    // Search for the black line instead of stopping.
+    else {
         if (lastDirection == -1) {
             searchLeft()
         } else {
@@ -350,53 +222,50 @@ function lineFollowingStep() {
 
 
 // ============================================================
-// BUTTON CONTROL — single start button
+// BUTTONS
 // ============================================================
 
-input.onButtonPressed(Button.B, function () {
-    if (robotState != WAITING) {
-        return
+// Press A to begin.
+input.onButtonPressed(Button.A, function () {
+    if (!started) {
+        started = true
+        stopped = false
+
+        basic.showArrow(ArrowNames.North)
+
+        goStraightThenTurnLeft()
+
+        basic.showArrow(ArrowNames.West)
     }
+})
 
-    destinationIndex = 0
-    forwardSpeed = FORWARD_SPEED
-    robotState = OUTBOUND
-    legStartedAt = input.runningTime()
 
-    basic.showIcon(IconNames.Happy)
+// Press B to stop.
+input.onButtonPressed(Button.B, function () {
+    stopped = true
+    stopRobot()
 
-    forward()
-    basic.pause(LEAVE_CENTER_MS)
+    basic.showIcon(IconNames.No)
 })
 
 
 // ============================================================
-// INITIAL SETUP
+// SETUP
 // ============================================================
 
-stopMotors()
+stopRobot()
 basic.showIcon(IconNames.Happy)
 
 
 // ============================================================
-// MAIN LOOP
+// FOREVER LOOP
 // ============================================================
 
 basic.forever(function () {
-    if (robotState == OUTBOUND) {
-        checkArrivalOutbound()
-        if (robotState == OUTBOUND) {
-            lineFollowingStep()
-        }
-
-    } else if (robotState == RETURNING) {
-        checkSpawnReturn()
-        if (robotState == RETURNING) {
-            lineFollowingStep()
-        }
-
+    if (started && !stopped) {
+        followBlackLine()
     } else {
-        stopMotors()
+        stopRobot()
     }
 
     basic.pause(10)
