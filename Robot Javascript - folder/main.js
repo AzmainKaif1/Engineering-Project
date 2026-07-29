@@ -1,62 +1,191 @@
 // ============================================================
-// MAQUEEN AUTO-START BLACK-LINE FOLLOWER + RADIO CONTROLLER
+// MAQUEEN FAST BLACK-LINE FOLLOWER
+// + RADIO CONTROLLER
+// + RGB STATUS
+// + MUSIC
 //
-// The robot begins moving immediately when powered on.
+// CONTROLLER COMMANDS:
 //
-// CONTROLLER:
-// A button     sends "LEFT"
-// B button     sends "RIGHT"
-// A+B buttons  sends "TOGGLE"
+// A       sends "LEFT"
+// B       sends "RIGHT"
+// A + B   sends "TOGGLE"
 //
-// ROBOT BUTTONS:
-// A = start/resume
-// B = stop
+// RUNNING MODE:
+// - Robot follows black tape.
+// - RGB lights are RED.
+// - Micro:bit shows an X.
+// - Running tune repeats.
+//
+// DELIVERY / STOPPED MODE:
+// - Robot stops.
+// - RGB lights are GREEN.
+// - Micro:bit shows a check mark.
+// - Completion tune plays once.
 //
 // Both micro:bits must use radio group 17.
 //
-// Line sensor values:
+// LINE SENSOR VALUES:
 // 0 = black
 // 1 = white
 // ============================================================
 
 
-// -------------------- SPEED SETTINGS --------------------
+// ============================================================
+// WHEEL SPEED SETTINGS
+// ============================================================
 
-let FORWARD_SPEED = 30
-let CORRECTION_SPEED = 36
-let SEARCH_SPEED = 23
+// Separate speeds help balance the two motors.
+//
+// If the robot drifts left:
+// Increase LEFT_FORWARD_SPEED slightly.
+//
+// If the robot drifts right:
+// Increase RIGHT_FORWARD_SPEED slightly.
 
-let LEFT_TURN_SPEED = 55
-let RIGHT_TURN_SPEED = 55
+let LEFT_FORWARD_SPEED = 48
+let RIGHT_FORWARD_SPEED = 52
+
+// Speeds used while correcting the line.
+let LEFT_CORRECTION_SPEED = 56
+let RIGHT_CORRECTION_SPEED = 58
+
+// Slow wheel speed during corrections.
+let SLOW_WHEEL_SPEED = 14
+
+// Speed used when searching for a lost line.
+let SEARCH_SPEED = 32
+
+// Speeds used for controller turns.
+let LEFT_TURN_SPEED = 66
+let RIGHT_TURN_SPEED = 70
 
 
-// -------------------- TURN SETTINGS --------------------
+// ============================================================
+// TURN SETTINGS
+// ============================================================
 
+// Faster motors require shorter turning times.
+//
 // Increase if the robot does not turn enough.
-// Decrease if it turns too far.
-let LEFT_TURN_MS = 390
-let RIGHT_TURN_MS = 390
+// Decrease if the robot turns too far.
+
+let LEFT_TURN_MS = 330
+let RIGHT_TURN_MS = 330
 
 // Move forward after a controller turn so the sensors
-// reconnect with the black tape.
-let REJOIN_LINE_MS = 220
+// reconnect with the selected black tape.
+let REJOIN_LINE_MS = 180
 
-// How long to continue forward when both sensors briefly see white.
-let WHITE_GRACE_MS = 70
+// Continue forward briefly if both sensors see white.
+let WHITE_GRACE_MS = 60
 
 
-// -------------------- VARIABLES --------------------
+// ============================================================
+// RGB SETTINGS
+// ============================================================
 
-// Starts true, so the robot moves immediately after power-on.
+// Change P15 if your RGB LEDs use another pin.
+let rgbLights = neopixel.create(
+    DigitalPin.P15,
+    4,
+    NeoPixelMode.RGB
+)
+
+// Maximum RGB brightness.
+rgbLights.setBrightness(255)
+
+
+// ============================================================
+// VARIABLES
+// ============================================================
+
+// Robot starts running immediately when powered on.
 let robotRunning = true
 
+// True when the robot is stopped at a delivery location.
+let deliveryMode = false
+
+// Prevent automatic line-following during a manual turn.
 let manualTurnActive = false
 
-// -1 = black line was last toward the left.
-// 1 = black line was last toward the right.
+// -1 means the black line was last seen toward the left.
+// 1 means the black line was last seen toward the right.
 let lastDirection = 1
 
+// -1 means both sensors are not currently seeing white.
 let whiteStartedAt = -1
+
+
+// ============================================================
+// RGB FUNCTIONS
+// ============================================================
+
+function showRunningRed() {
+    rgbLights.showColor(
+        neopixel.colors(NeoPixelColors.Red)
+    )
+}
+
+
+function showDeliveryGreen() {
+    rgbLights.showColor(
+        neopixel.colors(NeoPixelColors.Green)
+    )
+}
+
+
+function turnOffRGB() {
+    rgbLights.clear()
+    rgbLights.show()
+}
+
+
+// ============================================================
+// MUSIC FUNCTIONS
+// ============================================================
+
+function startRunningTune() {
+    // Stop any previous melody first.
+    music.stopMelody(
+        MelodyStopOptions.All
+    )
+
+    // Repeating background tune.
+    // It does not block line-following.
+    music.startMelody(
+        [
+            "C4:1",
+            "E4:1",
+            "G4:1",
+            "E4:1",
+            "D4:1",
+            "F4:1",
+            "A4:1",
+            "F4:1"
+        ],
+        MelodyOptions.ForeverInBackground
+    )
+}
+
+
+function playCompletionTune() {
+    music.stopMelody(
+        MelodyStopOptions.All
+    )
+
+    // Completion/success melody.
+    music.startMelody(
+        [
+            "C4:1",
+            "E4:1",
+            "G4:1",
+            "C5:2",
+            "G4:1",
+            "C5:3"
+        ],
+        MelodyOptions.Once
+    )
+}
 
 
 // ============================================================
@@ -64,50 +193,70 @@ let whiteStartedAt = -1
 // ============================================================
 
 function stopRobot() {
-    maqueen.motorStop(maqueen.Motors.M1)
-    maqueen.motorStop(maqueen.Motors.M2)
+    maqueen.motorStop(
+        maqueen.Motors.M1
+    )
+
+    maqueen.motorStop(
+        maqueen.Motors.M2
+    )
 }
 
 
 function moveForward() {
+    // M1 = left wheel.
     maqueen.motorRun(
         maqueen.Motors.M1,
         maqueen.Dir.CW,
-        FORWARD_SPEED
+        LEFT_FORWARD_SPEED
     )
 
+    // M2 = right wheel.
     maqueen.motorRun(
         maqueen.Motors.M2,
         maqueen.Dir.CW,
-        FORWARD_SPEED
+        RIGHT_FORWARD_SPEED
     )
 }
 
 
+// Turn gently left while following the line.
 function correctLeft() {
-    // Slow/stop the left wheel and run the right wheel.
-    maqueen.motorStop(maqueen.Motors.M1)
-
-    maqueen.motorRun(
-        maqueen.Motors.M2,
-        maqueen.Dir.CW,
-        CORRECTION_SPEED
-    )
-}
-
-
-function correctRight() {
-    // Run the left wheel and slow/stop the right wheel.
+    // Slow the left wheel.
     maqueen.motorRun(
         maqueen.Motors.M1,
         maqueen.Dir.CW,
-        CORRECTION_SPEED
+        SLOW_WHEEL_SPEED
     )
 
-    maqueen.motorStop(maqueen.Motors.M2)
+    // Speed up the right wheel.
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        RIGHT_CORRECTION_SPEED
+    )
 }
 
 
+// Turn gently right while following the line.
+function correctRight() {
+    // Speed up the left wheel.
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        LEFT_CORRECTION_SPEED
+    )
+
+    // Slow the right wheel.
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        SLOW_WHEEL_SPEED
+    )
+}
+
+
+// Rotate left in place.
 function spinLeft() {
     maqueen.motorRun(
         maqueen.Motors.M1,
@@ -118,16 +267,17 @@ function spinLeft() {
     maqueen.motorRun(
         maqueen.Motors.M2,
         maqueen.Dir.CW,
-        LEFT_TURN_SPEED
+        RIGHT_TURN_SPEED
     )
 }
 
 
+// Rotate right in place.
 function spinRight() {
     maqueen.motorRun(
         maqueen.Motors.M1,
         maqueen.Dir.CW,
-        RIGHT_TURN_SPEED
+        LEFT_TURN_SPEED
     )
 
     maqueen.motorRun(
@@ -138,6 +288,7 @@ function spinRight() {
 }
 
 
+// Search left when both sensors lose the line.
 function searchLeft() {
     maqueen.motorRun(
         maqueen.Motors.M1,
@@ -153,6 +304,7 @@ function searchLeft() {
 }
 
 
+// Search right when both sensors lose the line.
 function searchRight() {
     maqueen.motorRun(
         maqueen.Motors.M1,
@@ -169,26 +321,30 @@ function searchRight() {
 
 
 // ============================================================
-// MANUAL CONTROLLER TURNS
+// CONTROLLER LEFT TURN
 // ============================================================
 
 function controllerTurnLeft() {
-    if (!robotRunning || manualTurnActive) {
+    if (
+        !robotRunning ||
+        deliveryMode ||
+        manualTurnActive
+    ) {
         return
     }
 
     manualTurnActive = true
 
     stopRobot()
-    basic.pause(50)
+    basic.pause(40)
 
     spinLeft()
     basic.pause(LEFT_TURN_MS)
 
     stopRobot()
-    basic.pause(70)
+    basic.pause(50)
 
-    // Push onto the selected black line.
+    // Push forward onto the selected black line.
     moveForward()
     basic.pause(REJOIN_LINE_MS)
 
@@ -199,23 +355,31 @@ function controllerTurnLeft() {
 }
 
 
+// ============================================================
+// CONTROLLER RIGHT TURN
+// ============================================================
+
 function controllerTurnRight() {
-    if (!robotRunning || manualTurnActive) {
+    if (
+        !robotRunning ||
+        deliveryMode ||
+        manualTurnActive
+    ) {
         return
     }
 
     manualTurnActive = true
 
     stopRobot()
-    basic.pause(50)
+    basic.pause(40)
 
     spinRight()
     basic.pause(RIGHT_TURN_MS)
 
     stopRobot()
-    basic.pause(70)
+    basic.pause(50)
 
-    // Push onto the selected black line.
+    // Push forward onto the selected black line.
     moveForward()
     basic.pause(REJOIN_LINE_MS)
 
@@ -240,52 +404,74 @@ function followBlackLine() {
     )
 
 
-    // Both sensors detect black.
+    // --------------------------------------------------------
+    // BOTH SENSORS SEE BLACK
+    // --------------------------------------------------------
+
     if (
         leftSensor == 0 &&
         rightSensor == 0
     ) {
         whiteStartedAt = -1
+
         moveForward()
     }
 
 
-    // Left sensor detects black.
+    // --------------------------------------------------------
+    // LEFT SENSOR SEES BLACK
+    // --------------------------------------------------------
+
     else if (
         leftSensor == 0 &&
         rightSensor == 1
     ) {
         whiteStartedAt = -1
         lastDirection = -1
+
         correctLeft()
     }
 
 
-    // Right sensor detects black.
+    // --------------------------------------------------------
+    // RIGHT SENSOR SEES BLACK
+    // --------------------------------------------------------
+
     else if (
         leftSensor == 1 &&
         rightSensor == 0
     ) {
         whiteStartedAt = -1
         lastDirection = 1
+
         correctRight()
     }
 
 
-    // Both sensors detect white.
+    // --------------------------------------------------------
+    // BOTH SENSORS SEE WHITE
+    // --------------------------------------------------------
+
     else {
         if (whiteStartedAt == -1) {
-            whiteStartedAt = input.runningTime()
+            whiteStartedAt =
+                input.runningTime()
         }
 
         let whiteDuration =
-            input.runningTime() - whiteStartedAt
+            input.runningTime() -
+            whiteStartedAt
 
-        // Continue briefly instead of immediately stopping.
-        if (whiteDuration < WHITE_GRACE_MS) {
+        // Continue straight briefly for small sensor flickers.
+        if (
+            whiteDuration <
+            WHITE_GRACE_MS
+        ) {
             moveForward()
+
         } else {
-            // Search in the direction where black was last detected.
+            // Search in the direction where the line
+            // was last detected.
             if (lastDirection == -1) {
                 searchLeft()
             } else {
@@ -297,95 +483,163 @@ function followBlackLine() {
 
 
 // ============================================================
+// RUNNING MODE
+// ============================================================
+
+function enterRunningMode() {
+    deliveryMode = false
+    robotRunning = true
+    manualTurnActive = false
+
+    whiteStartedAt = -1
+
+    // Red means the delivery is still in progress.
+    showRunningRed()
+
+    // X means not delivered yet.
+    basic.showIcon(
+        IconNames.No
+    )
+
+    startRunningTune()
+}
+
+
+// ============================================================
+// DELIVERY / STOPPED MODE
+// ============================================================
+
+function enterDeliveryMode() {
+    deliveryMode = true
+    robotRunning = false
+    manualTurnActive = false
+
+    stopRobot()
+
+    // Green means delivery completed.
+    showDeliveryGreen()
+
+    // Check mark means success.
+    basic.showIcon(
+        IconNames.Yes
+    )
+
+    playCompletionTune()
+
+    stopRobot()
+}
+
+
+// ============================================================
+// TOGGLE RUN / STOP
+// ============================================================
+
+function toggleDeliveryMode() {
+    if (deliveryMode) {
+        enterRunningMode()
+    } else {
+        enterDeliveryMode()
+    }
+}
+
+
+// ============================================================
 // RADIO CONTROLLER
 // ============================================================
 
 radio.onReceivedString(function (command) {
 
-    // Supports the normal controller commands.
-    if (command == "LEFT" || command == "A") {
+    // Controller A button.
+    if (
+        command == "LEFT" ||
+        command == "A"
+    ) {
         controllerTurnLeft()
     }
 
-    else if (command == "RIGHT" || command == "B") {
+
+    // Controller B button.
+    else if (
+        command == "RIGHT" ||
+        command == "B"
+    ) {
         controllerTurnRight()
     }
 
-    else if (command == "TOGGLE") {
-        robotRunning = !robotRunning
 
-        if (robotRunning) {
-            whiteStartedAt = -1
-            basic.showIcon(IconNames.Yes)
-        } else {
-            stopRobot()
-            basic.showIcon(IconNames.No)
-        }
+    // Controller A+B buttons.
+    else if (
+        command == "TOGGLE"
+    ) {
+        toggleDeliveryMode()
     }
 
-    else if (command == "START") {
-        robotRunning = true
-        whiteStartedAt = -1
-        basic.showIcon(IconNames.Yes)
+
+    // Optional backup start command.
+    else if (
+        command == "START"
+    ) {
+        enterRunningMode()
     }
 
-    else if (command == "STOP") {
-        robotRunning = false
-        stopRobot()
-        basic.showIcon(IconNames.No)
-    }
-})
 
-
-// ============================================================
-// ROBOT BUTTONS
-// ============================================================
-
-// Robot button A starts/resumes.
-input.onButtonPressed(Button.A, function () {
-    robotRunning = true
-    whiteStartedAt = -1
-
-    basic.showIcon(IconNames.Yes)
-})
-
-
-// Robot button B stops.
-input.onButtonPressed(Button.B, function () {
-    robotRunning = false
-    stopRobot()
-
-    basic.showIcon(IconNames.No)
-})
-
-
-// Robot A+B also toggles start/stop.
-input.onButtonPressed(Button.AB, function () {
-    robotRunning = !robotRunning
-
-    if (robotRunning) {
-        whiteStartedAt = -1
-        basic.showIcon(IconNames.Yes)
-    } else {
-        stopRobot()
-        basic.showIcon(IconNames.No)
+    // Optional backup stop command.
+    else if (
+        command == "STOP"
+    ) {
+        enterDeliveryMode()
     }
 })
 
 
 // ============================================================
-// RADIO AND INITIAL STARTUP
+// BUTTONS DIRECTLY ON THE ROBOT
 // ============================================================
 
+// Robot A button starts/resumes.
+input.onButtonPressed(
+    Button.A,
+    function () {
+        enterRunningMode()
+    }
+)
+
+
+// Robot B button stops and marks delivery complete.
+input.onButtonPressed(
+    Button.B,
+    function () {
+        enterDeliveryMode()
+    }
+)
+
+
+// Robot A+B toggles running/stopped mode.
+input.onButtonPressed(
+    Button.AB,
+    function () {
+        toggleDeliveryMode()
+    }
+)
+
+
+// ============================================================
+// INITIAL SETUP
+// ============================================================
+
+// Robot and controller must use the same radio group.
 radio.setGroup(17)
+
+// Maximum radio transmission power.
 radio.setTransmitPower(7)
 
-// It begins running immediately.
-robotRunning = true
-whiteStartedAt = -1
+// Maximum sound volume.
+music.setVolume(255)
 
-basic.showIcon(IconNames.Yes)
+// Start immediately in running mode.
+enterRunningMode()
 
+// Begin moving immediately.
 moveForward()
 
 
@@ -394,9 +648,17 @@ moveForward()
 // ============================================================
 
 basic.forever(function () {
-    if (robotRunning && !manualTurnActive) {
+    if (
+        robotRunning &&
+        !deliveryMode &&
+        !manualTurnActive
+    ) {
         followBlackLine()
-    } else if (!robotRunning) {
+
+    } else if (
+        !robotRunning ||
+        deliveryMode
+    ) {
         stopRobot()
     }
 
