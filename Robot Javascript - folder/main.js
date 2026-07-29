@@ -1,459 +1,392 @@
 // ============================================================
-// MAQUEEN ULTRASONIC DELIVERY ROBOT ( radio)
+// MAQUEEN AUTO-START BLACK-LINE FOLLOWER + RADIO CONTROLLER
 //
-//                  A
-//                  |
-//            D ----S---- B
-//                  |
-//                  C
+// The robot begins moving immediately when powered on.
 //
-// Robot begins at S, physically facing A.
-// LOOP RULE: after every single return to S, turn the same direction
-// (RETURN_TURN_DIRECTION) once, then go straight to the next station.
-// Which physical station ends up visited in which order falls out of
-// the course layout -- confirm by testing.
+// CONTROLLER:
+// A button     sends "LEFT"
+// B button     sends "RIGHT"
+// A+B buttons  sends "TOGGLE"
 //
-// Arrival at a station = ultrasonic sensor detects the cardboard
-// building close ahead. No radio needed.
+// ROBOT BUTTONS:
+// A = start/resume
+// B = stop
 //
-// Getting back to spawn = timed dead reckoning. No tape gap, no
-// sensor-based marker at the intersection at all -- the robot just
-// drives back at CREEP_SPEED for a fixed, measured duration per arm
-// (arms are different lengths, so each gets its own number), then
-// stops and does the turn. Same open-loop philosophy already used
-// for the turns themselves (TURN_90_MS etc.) -- no angle/position
-// feedback, just calibrated timing.
+// Both micro:bits must use radio group 17.
+//
+// Line sensor values:
+// 0 = black
+// 1 = white
 // ============================================================
 
 
-// -------------------- ROBOT STATES --------------------
+// -------------------- SPEED SETTINGS --------------------
 
-let WAITING = 0
-let OUTBOUND = 1
-let RETURNING = 2
-let BUSY = 3
+let FORWARD_SPEED = 30
+let CORRECTION_SPEED = 36
+let SEARCH_SPEED = 23
 
-let robotState = WAITING
-
-
-// -------------------- MOTOR SPEEDS --------------------
-
-let FORWARD_SPEED = 42
-let CORRECTION_SPEED = 46
-let SEARCH_SPEED = 25
-
-// Confirmed by testing with turn-calibration-test.js: the two motors
-// aren't perfectly matched, so a single shared spin speed doesn't
-// give a clean 90/180 in every direction. Each turn type gets its
-// own tuned value instead. Still worth re-checking these
-// periodically as the battery drains, since these are open-loop
-// (timed) turns with no angle feedback.
-let TURN_LEFT_SPEED = 65
-let TURN_RIGHT_SPEED = 69
-let TURN_AROUND_SPEED = 62
-
-// Current commanded forward speed. Starts at FORWARD_SPEED and gets
-// throttled down by checkArrivalOutbound() as the robot nears a
-// building, then reset back to FORWARD_SPEED at the start of each
-// new leg. forward() always drives at whatever this is currently
-// set to.
-let forwardSpeed = FORWARD_SPEED
+let LEFT_TURN_SPEED = 55
+let RIGHT_TURN_SPEED = 55
 
 
-// -------------------- TURN SETTINGS (TUNE THESE) --------------------
+// -------------------- TURN SETTINGS --------------------
 
-let TURN_90_MS = 430
-let TURN_180_MS = 860
+// Increase if the robot does not turn enough.
+// Decrease if it turns too far.
+let LEFT_TURN_MS = 390
+let RIGHT_TURN_MS = 390
 
-// Used by the very first launch (Button B), where the robot is
-// manually placed on the line rather than actively leaving a
-// detected gap.
-let LEAVE_CENTER_MS = 480
+// Move forward after a controller turn so the sensors
+// reconnect with the black tape.
+let REJOIN_LINE_MS = 220
 
-// Used every other time the robot leaves spawn: how long to blind-
-// drive straight after the spawn turn before handing off to normal
-// line following. Gives it a moment to clear the pivot point so
-// line-following isn't immediately fighting the turn's momentum.
-// Started equal to LEAVE_CENTER_MS, tune independently -- this drive
-// starts from a dead stop right at the intersection rather than from
-// an arbitrary manual placement.
-let CROSS_CENTER_MS = 480
+// How long to continue forward when both sensors briefly see white.
+let WHITE_GRACE_MS = 70
 
 
-// -------------------- ULTRASONIC SETTINGS (TUNE THESE) --------------------
+// -------------------- VARIABLES --------------------
 
-// Distance in cm at which the robot counts the building as "reached"
-// and stops for real. Raised from 8 to 10 — at 8cm there usually
-// isn't enough room left to fully bleed off momentum before contact,
-// especially since the last stretch is now driven at CREEP_SPEED.
-let ARRIVAL_DISTANCE_CM = 10
+// Starts true, so the robot moves immediately after power-on.
+let robotRunning = true
 
-// Distance in cm at which the robot starts slowing to CREEP_SPEED
-// instead of full FORWARD_SPEED. Approaching slowly gives much less
-// momentum to shed at the final stop, which is the main fix for
-// "doesn't stop in time and hits the object."
-let SLOWDOWN_DISTANCE_CM = 30
+let manualTurnActive = false
 
-// Slow approach speed used between SLOWDOWN_DISTANCE_CM and
-// ARRIVAL_DISTANCE_CM.
-let CREEP_SPEED = 20
+// -1 = black line was last toward the left.
+// 1 = black line was last toward the right.
+let lastDirection = 1
 
-// Ignore ultrasonic readings right after leaving spawn, so it doesn't
-// falsely trigger on something behind it or on sensor noise.
-let DEPARTURE_IGNORE_MS = 800
-
-// How long to sit at the building before turning around (feels like a delivery).
-let DELIVERY_PAUSE_MS = 800
-
-
-// How long the robot tolerates seeing white on both sensors before
-// concluding the line is genuinely lost and starts actively
-// searching for it. Now that spawn detection is moving to a timer
-// (no more tape gap to tolerate), "both white" should basically
-// always mean real line loss -- so this is just filtering out a
-// single-tick sensor flicker, not tolerating a deliberate gap.
-// Dropped way down from 500 for that reason; if it's still too
-// twitchy (searching on brief, harmless flickers), nudge it up
-// slightly, but it shouldn't need to be anywhere near 500 again.
-let LINE_LOST_MS = 80
-
-
-// -------------------- RETURN TIMING (TUNE THESE) --------------------
-//
-// How long, in ms, the return leg takes from each station back to the
-// center of the intersection, driving at CREEP_SPEED. Indexed by
-// destinationIndex (0,1,2,3 cycling), one entry per leg of the loop.
-// Arms are different physical lengths, so these are NOT the same
-// number -- measure each one by watching where the robot actually
-// stops relative to the intersection and nudging the corresponding
-// entry up (stopped short of center) or down (overshot past center).
-//
-// These are placeholders, not measured values yet -- start here and
-// tune per arm.
-let returnDurationMs = [3000, 3000, 3000, 3000]
-
-// The entire return leg drives at CREEP_SPEED, not just a portion of
-// it -- an earlier version tried switching to creep partway through
-// (after RETURN_SLOWDOWN_MS), but that only works if the timing
-// happens to land before reaching the intersection, which isn't
-// reliable across arms of different lengths. Driving the whole leg
-// slow removes that guesswork entirely: less momentum at the stop no
-// matter which arm it's returning from, and it's also the speed the
-// returnDurationMs values above were/should be measured at -- if you
-// ever change CREEP_SPEED, re-measure all four.
-
-
-// -------------------- ROUTE ORDER & TURNS AT SPAWN --------------------
-
-// Every single return does the exact same thing: one turn (currently
-// right), then straight out to the next station. No per-arm turn
-// plan needed anymore -- unlike the old design (some returns went
-// straight through, one turned left, one turned right), this is a
-// single fixed rule applied every time. Which physical station ends
-// up visited in which order falls out of the course geometry, not
-// this array -- destinations is just here to give destinationIndex
-// something to cycle through (0,1,2,3,0,...) for indexing
-// returnDurationMs below, since the arms are different lengths.
-// Confirm by testing which order this actually visits the 4 stations
-// in, and swap RETURN_TURN_DIRECTION to "left" if it's visiting them
-// backwards from what you want.
-let destinations = ["leg0", "leg1", "leg2", "leg3"]
-let destinationIndex = 0
-
-let RETURN_TURN_DIRECTION = "right"
-
-
-// -------------------- LINE FOLLOWING STATE --------------------
-
-let leftSensor = 0
-let rightSensor = 0
-let lastDirection = 1   // -1 = line last seen left, 1 = last seen right
-let whiteStartedAt = -1 // when the current both-white stretch began, -1 if not currently white
-
-let legStartedAt = 0
+let whiteStartedAt = -1
 
 
 // ============================================================
-// BASIC MOTOR FUNCTIONS
+// MOTOR FUNCTIONS
 // ============================================================
 
-function stopMotors() {
+function stopRobot() {
     maqueen.motorStop(maqueen.Motors.M1)
     maqueen.motorStop(maqueen.Motors.M2)
 }
 
-function forward() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, forwardSpeed)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, forwardSpeed)
+
+function moveForward() {
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        FORWARD_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        FORWARD_SPEED
+    )
 }
 
-function reverse() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CCW, FORWARD_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CCW, FORWARD_SPEED)
-}
 
 function correctLeft() {
+    // Slow/stop the left wheel and run the right wheel.
     maqueen.motorStop(maqueen.Motors.M1)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, CORRECTION_SPEED)
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        CORRECTION_SPEED
+    )
 }
 
+
 function correctRight() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, CORRECTION_SPEED)
+    // Run the left wheel and slow/stop the right wheel.
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        CORRECTION_SPEED
+    )
+
     maqueen.motorStop(maqueen.Motors.M2)
 }
 
-function spinLeft(speed: number) {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CCW, speed)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, speed)
+
+function spinLeft() {
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CCW,
+        LEFT_TURN_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        LEFT_TURN_SPEED
+    )
 }
 
-function spinRight(speed: number) {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, speed)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CCW, speed)
+
+function spinRight() {
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        RIGHT_TURN_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CCW,
+        RIGHT_TURN_SPEED
+    )
 }
 
-function searchRight() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CW, SEARCH_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CCW, SEARCH_SPEED)
-}
 
 function searchLeft() {
-    maqueen.motorRun(maqueen.Motors.M1, maqueen.Dir.CCW, SEARCH_SPEED)
-    maqueen.motorRun(maqueen.Motors.M2, maqueen.Dir.CW, SEARCH_SPEED)
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CCW,
+        SEARCH_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CW,
+        SEARCH_SPEED
+    )
+}
+
+
+function searchRight() {
+    maqueen.motorRun(
+        maqueen.Motors.M1,
+        maqueen.Dir.CW,
+        SEARCH_SPEED
+    )
+
+    maqueen.motorRun(
+        maqueen.Motors.M2,
+        maqueen.Dir.CCW,
+        SEARCH_SPEED
+    )
 }
 
 
 // ============================================================
-// LARGE TURN FUNCTIONS
+// MANUAL CONTROLLER TURNS
 // ============================================================
 
-function turnLeft90Degrees() {
-    stopMotors()
-    basic.pause(100)
-    spinLeft(TURN_LEFT_SPEED)
-    basic.pause(TURN_90_MS)
-    stopMotors()
-    basic.pause(150)
-}
-
-function turnRight90Degrees() {
-    stopMotors()
-    basic.pause(100)
-    spinRight(TURN_RIGHT_SPEED)
-    basic.pause(TURN_90_MS)
-    stopMotors()
-    basic.pause(150)
-}
-
-function turnAround() {
-    reverse()
-    basic.pause(180)
-    stopMotors()
-    basic.pause(100)
-    spinLeft(TURN_AROUND_SPEED)
-    basic.pause(TURN_180_MS)
-    stopMotors()
-    basic.pause(150)
-}
-
-
-// ============================================================
-// ULTRASONIC READING
-// ============================================================
-
-function readDistanceCm(): number {
-    // If this block name doesn't match your extension version,
-    // check the Maqueen category in the blocks editor for the
-    // exact "Ultrasonic sensor distance (cm)" block and swap it in.
-    return maqueen.Ultrasonic()
-}
-
-
-// ============================================================
-// ARRIVAL AT A STATION (ultrasonic-triggered)
-// ============================================================
-
-function performArrivalRoutine() {
-    robotState = BUSY
-
-    stopMotors()
-    basic.showIcon(IconNames.Happy)
-    basic.pause(DELIVERY_PAUSE_MS)
-
-    turnAround()
-
-    // Whole return leg drives slow -- see note above.
-    forwardSpeed = CREEP_SPEED
-
-    robotState = RETURNING
-    legStartedAt = input.runningTime()
-
-    forward()
-}
-
-
-// Called every loop tick while OUTBOUND.
-function checkArrivalOutbound() {
-    let currentTime = input.runningTime()
-
-    // Ignore the sensor right after leaving spawn.
-    if (currentTime - legStartedAt < DEPARTURE_IGNORE_MS) {
+function controllerTurnLeft() {
+    if (!robotRunning || manualTurnActive) {
         return
     }
 
-    let distance = readDistanceCm()
+    manualTurnActive = true
 
-    // 0 usually means an invalid/echo-timeout reading on this sensor;
-    // ignore those instead of treating them as "very close".
-    if (distance <= 0) {
+    stopRobot()
+    basic.pause(50)
+
+    spinLeft()
+    basic.pause(LEFT_TURN_MS)
+
+    stopRobot()
+    basic.pause(70)
+
+    // Push onto the selected black line.
+    moveForward()
+    basic.pause(REJOIN_LINE_MS)
+
+    whiteStartedAt = -1
+    lastDirection = -1
+
+    manualTurnActive = false
+}
+
+
+function controllerTurnRight() {
+    if (!robotRunning || manualTurnActive) {
         return
     }
 
-    if (distance <= ARRIVAL_DISTANCE_CM) {
-        performArrivalRoutine()
+    manualTurnActive = true
 
-    } else if (distance <= SLOWDOWN_DISTANCE_CM) {
-        // Close enough to start easing off — creep the rest of the
-        // way in so there's much less momentum to shed at the stop.
-        forwardSpeed = CREEP_SPEED
+    stopRobot()
+    basic.pause(50)
 
-    } else {
-        forwardSpeed = FORWARD_SPEED
-    }
+    spinRight()
+    basic.pause(RIGHT_TURN_MS)
+
+    stopRobot()
+    basic.pause(70)
+
+    // Push onto the selected black line.
+    moveForward()
+    basic.pause(REJOIN_LINE_MS)
+
+    whiteStartedAt = -1
+    lastDirection = 1
+
+    manualTurnActive = false
 }
 
 
 // ============================================================
-// RETURNING TO SPAWN (timed dead reckoning)
+// BLACK-LINE FOLLOWING
 // ============================================================
 
-function handleSpawnReached() {
-    robotState = BUSY
+function followBlackLine() {
+    let leftSensor = maqueen.readPatrol(
+        maqueen.Patrol.PatrolLeft
+    )
 
-    stopMotors()
-    basic.pause(200)
-
-    // Same turn every single time -- see RETURN_TURN_DIRECTION above.
-    if (RETURN_TURN_DIRECTION == "right") {
-        turnRight90Degrees()
-    } else {
-        turnLeft90Degrees()
-    }
-
-    // Advance to the next destination in the fixed loop.
-    destinationIndex = (destinationIndex + 1) % destinations.length
-
-    // Full speed heading back out; checkArrivalOutbound() will slow
-    // it down again as it nears the next building.
-    forwardSpeed = FORWARD_SPEED
-
-    robotState = OUTBOUND
-    legStartedAt = input.runningTime()
-
-    // Same approach as the very first launch (Button B): blind-drive
-    // straight for a fixed, calibrated time to clear the
-    // intersection, then hand off to the ordinary lineFollowingStep()
-    // -- the same line-following/correction/search logic used for
-    // every other stretch of every leg. No separate sensor-based
-    // "wait until confirmed clear" logic: that approach (tried and
-    // reworked three times) kept being the thing that broke, whether
-    // by hanging forever waiting for a reading that never came, or by
-    // handing off control at the wrong moment. Reusing the simpler,
-    // already-proven mechanism instead of a bespoke one for this one
-    // spot removes that whole class of bug.
-    forward()
-    basic.pause(CROSS_CENTER_MS)
-}
+    let rightSensor = maqueen.readPatrol(
+        maqueen.Patrol.PatrolRight
+    )
 
 
-// Called every loop tick while RETURNING. No sensor involved at all --
-// just checks whether enough time has passed for this specific arm
-// (returnDurationMs[destinationIndex]) since the return leg started.
-function checkSpawnReturn() {
-    if (input.runningTime() - legStartedAt >= returnDurationMs[destinationIndex]) {
-        // handleSpawnReached() sets robotState = BUSY as its very
-        // first line, so the main loop's
-        // "if (robotState == RETURNING) lineFollowingStep()" check
-        // right after this call is already false by the time it
-        // runs -- nothing gets a chance to run another tick of
-        // RETURNING logic after time's up.
-        handleSpawnReached()
-    }
-}
-
-
-// ============================================================
-// BLACK-TAPE LINE FOLLOWING (no gap/marker logic needed)
-// ============================================================
-
-function lineFollowingStep() {
-    leftSensor = maqueen.readPatrol(maqueen.Patrol.PatrolLeft)
-    rightSensor = maqueen.readPatrol(maqueen.Patrol.PatrolRight)
-
-    if (leftSensor == 0 && rightSensor == 0) {
+    // Both sensors detect black.
+    if (
+        leftSensor == 0 &&
+        rightSensor == 0
+    ) {
         whiteStartedAt = -1
-        forward()
+        moveForward()
+    }
 
-    } else if (leftSensor == 0 && rightSensor == 1) {
+
+    // Left sensor detects black.
+    else if (
+        leftSensor == 0 &&
+        rightSensor == 1
+    ) {
         whiteStartedAt = -1
         lastDirection = -1
         correctLeft()
+    }
 
-    } else if (leftSensor == 1 && rightSensor == 0) {
+
+    // Right sensor detects black.
+    else if (
+        leftSensor == 1 &&
+        rightSensor == 0
+    ) {
         whiteStartedAt = -1
         lastDirection = 1
         correctRight()
+    }
 
-    } else {
-        // Both sensors see white -- with no tape/marker anywhere on
-        // the course anymore, this should only ever be a brief
-        // misread (a flicker, a moment of drift). Tolerate that for
-        // LINE_LOST_MS by driving straight; past that, the line is
-        // genuinely gone, so actively search for it using the
-        // direction of the last real correction, instead of driving
-        // straight forever.
+
+    // Both sensors detect white.
+    else {
         if (whiteStartedAt == -1) {
             whiteStartedAt = input.runningTime()
         }
 
-        if (input.runningTime() - whiteStartedAt < LINE_LOST_MS) {
-            forward()
-        } else if (lastDirection == -1) {
-            searchLeft()
+        let whiteDuration =
+            input.runningTime() - whiteStartedAt
+
+        // Continue briefly instead of immediately stopping.
+        if (whiteDuration < WHITE_GRACE_MS) {
+            moveForward()
         } else {
-            searchRight()
+            // Search in the direction where black was last detected.
+            if (lastDirection == -1) {
+                searchLeft()
+            } else {
+                searchRight()
+            }
         }
     }
 }
 
 
 // ============================================================
-// BUTTON CONTROL — single start button
+// RADIO CONTROLLER
 // ============================================================
 
-input.onButtonPressed(Button.B, function () {
-    if (robotState != WAITING) {
-        return
+radio.onReceivedString(function (command) {
+
+    // Supports the normal controller commands.
+    if (command == "LEFT" || command == "A") {
+        controllerTurnLeft()
     }
 
-    destinationIndex = 0
-    forwardSpeed = FORWARD_SPEED
-    robotState = OUTBOUND
-    legStartedAt = input.runningTime()
+    else if (command == "RIGHT" || command == "B") {
+        controllerTurnRight()
+    }
 
-    basic.showIcon(IconNames.Happy)
+    else if (command == "TOGGLE") {
+        robotRunning = !robotRunning
 
-    forward()
-    basic.pause(LEAVE_CENTER_MS)
+        if (robotRunning) {
+            whiteStartedAt = -1
+            basic.showIcon(IconNames.Yes)
+        } else {
+            stopRobot()
+            basic.showIcon(IconNames.No)
+        }
+    }
+
+    else if (command == "START") {
+        robotRunning = true
+        whiteStartedAt = -1
+        basic.showIcon(IconNames.Yes)
+    }
+
+    else if (command == "STOP") {
+        robotRunning = false
+        stopRobot()
+        basic.showIcon(IconNames.No)
+    }
 })
 
 
 // ============================================================
-// INITIAL SETUP
+// ROBOT BUTTONS
 // ============================================================
 
-stopMotors()
-basic.showIcon(IconNames.Happy)
+// Robot button A starts/resumes.
+input.onButtonPressed(Button.A, function () {
+    robotRunning = true
+    whiteStartedAt = -1
+
+    basic.showIcon(IconNames.Yes)
+})
+
+
+// Robot button B stops.
+input.onButtonPressed(Button.B, function () {
+    robotRunning = false
+    stopRobot()
+
+    basic.showIcon(IconNames.No)
+})
+
+
+// Robot A+B also toggles start/stop.
+input.onButtonPressed(Button.AB, function () {
+    robotRunning = !robotRunning
+
+    if (robotRunning) {
+        whiteStartedAt = -1
+        basic.showIcon(IconNames.Yes)
+    } else {
+        stopRobot()
+        basic.showIcon(IconNames.No)
+    }
+})
+
+
+// ============================================================
+// RADIO AND INITIAL STARTUP
+// ============================================================
+
+radio.setGroup(17)
+radio.setTransmitPower(7)
+
+// It begins running immediately.
+robotRunning = true
+whiteStartedAt = -1
+
+basic.showIcon(IconNames.Yes)
+
+moveForward()
 
 
 // ============================================================
@@ -461,20 +394,10 @@ basic.showIcon(IconNames.Happy)
 // ============================================================
 
 basic.forever(function () {
-    if (robotState == OUTBOUND) {
-        checkArrivalOutbound()
-        if (robotState == OUTBOUND) {
-            lineFollowingStep()
-        }
-
-    } else if (robotState == RETURNING) {
-        checkSpawnReturn()
-        if (robotState == RETURNING) {
-            lineFollowingStep()
-        }
-
-    } else {
-        stopMotors()
+    if (robotRunning && !manualTurnActive) {
+        followBlackLine()
+    } else if (!robotRunning) {
+        stopRobot()
     }
 
     basic.pause(10)
