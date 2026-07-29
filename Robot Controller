@@ -1,0 +1,80 @@
+// ============================================================
+// MAQUEEN RADIO CONTROLLER
+//
+// A       = turn robot left
+// B       = turn robot right
+// A + B   = pause/resume robot
+//
+// Both micro:bits must use radio group 17.
+// ============================================================
+
+let robotRunning = false
+
+radio.setGroup(17)
+radio.setTransmitPower(7)
+
+// Robot begins paused.
+basic.showIcon(IconNames.No)
+
+
+// ------------------------------------------------------------
+// BUTTON A: TURN LEFT
+// ------------------------------------------------------------
+
+input.onButtonPressed(Button.A, function () {
+    if (!robotRunning) {
+        return
+    }
+
+    radio.sendString("LEFT")
+
+    basic.showArrow(ArrowNames.West)
+    basic.pause(250)
+
+    basic.showIcon(IconNames.Yes)
+})
+
+
+// ------------------------------------------------------------
+// BUTTON B: TURN RIGHT
+// ------------------------------------------------------------
+
+input.onButtonPressed(Button.B, function () {
+    if (!robotRunning) {
+        return
+    }
+
+    radio.sendString("RIGHT")
+
+    basic.showArrow(ArrowNames.East)
+    basic.pause(250)
+
+    basic.showIcon(IconNames.Yes)
+})
+
+
+// ------------------------------------------------------------
+// A+B: PAUSE OR RESUME
+// ------------------------------------------------------------
+
+input.onButtonPressed(Button.AB, function () {
+    robotRunning = !robotRunning
+
+    if (robotRunning) {
+        // Send several times so the command is not missed.
+        for (let attempt = 0; attempt < 5; attempt++) {
+            radio.sendString("START")
+            basic.pause(60)
+        }
+
+        basic.showIcon(IconNames.Yes)
+
+    } else {
+        for (let attempt = 0; attempt < 5; attempt++) {
+            radio.sendString("STOP")
+            basic.pause(60)
+        }
+
+        basic.showIcon(IconNames.No)
+    }
+})
